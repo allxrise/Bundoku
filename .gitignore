@@ -1,0 +1,7 @@
+# Godot 4+ cache & local build outputs
+/.godot/
+/build/
+*.import.tmp
+*.tmp
+*.log
+.DS_Store
