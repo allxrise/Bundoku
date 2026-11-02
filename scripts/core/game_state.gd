@@ -18,6 +18,7 @@ var carrots_count: int = 3
 var streak_days: int = 1
 var player_trophies: int = 120
 var player_nickname: String = "Pamuk Tavşan"
+var language: String = "tr"
 
 # Settings (mirrors Meowdoku's settings)
 var auto_cross_enabled: bool = true
@@ -75,8 +76,28 @@ const REGION_PATTERNS: Array[String] = [
 ]
 
 func _ready() -> void:
+	_init_default_language()
 	_load_levels()
 	load_save()
+
+func _init_default_language() -> void:
+	var os_lang := OS.get_locale_language().substr(0, 2).to_lower()
+	if Loc.DATA.has(os_lang):
+		language = os_lang
+	else:
+		language = "tr"
+	Loc.current_lang = language
+	player_nickname = Loc.t("player_default_name")
+
+func set_language(lang_code: String) -> void:
+	if not Loc.DATA.has(lang_code):
+		return
+	language = lang_code
+	Loc.current_lang = lang_code
+	player_nickname = Loc.t("player_default_name")
+	save_game()
+	settings_changed.emit()
+	stats_changed.emit()
 
 func _load_levels() -> void:
 	levels.clear()
@@ -198,7 +219,7 @@ func get_leaderboard() -> Array:
 			"is_player": false
 		})
 	all_entries.append({
-		"name": player_nickname + " (Sen)",
+		"name": player_nickname,
 		"trophies": player_trophies,
 		"is_player": true
 	})
@@ -222,6 +243,7 @@ func save_game() -> void:
 	cfg.set_value("settings", "pattern_mode_enabled", pattern_mode_enabled)
 	cfg.set_value("settings", "bunny_first_tap_mode", bunny_first_tap_mode)
 	cfg.set_value("settings", "sound_enabled", SoundManager.sound_enabled)
+	cfg.set_value("settings", "language", language)
 	cfg.save(SAVE_PATH)
 
 func load_save() -> void:
@@ -243,6 +265,11 @@ func load_save() -> void:
 	pattern_mode_enabled = bool(cfg.get_value("settings", "pattern_mode_enabled", false))
 	bunny_first_tap_mode = bool(cfg.get_value("settings", "bunny_first_tap_mode", false))
 	SoundManager.sound_enabled = bool(cfg.get_value("settings", "sound_enabled", true))
+	var saved_lang := str(cfg.get_value("settings", "language", ""))
+	if saved_lang != "" and Loc.DATA.has(saved_lang):
+		language = saved_lang
+		Loc.current_lang = language
+		player_nickname = Loc.t("player_default_name")
 
 func _build_fallback_levels() -> Array:
 	return [

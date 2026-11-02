@@ -308,6 +308,14 @@ func _load_assets() -> void:
 
 func _setup_fonts_and_theme() -> void:
 	if _font_base != null:
+		var sys_fallback := SystemFont.new()
+		sys_fallback.font_names = PackedStringArray([
+			"Noto Sans", "Roboto", "Noto Sans CJK SC", "Noto Sans CJK JP", "Noto Sans CJK KR",
+			"Noto Sans Arabic", "Noto Sans Devanagari", "Noto Sans Bengali", "Noto Sans Telugu",
+			"Droid Sans Fallback", "sans-serif"
+		])
+		_font_base.fallbacks = [sys_fallback]
+
 		_font_bold = FontVariation.new()
 		_font_bold.base_font = _font_base
 		_font_bold.variation_opentype = {"wght": 700}
@@ -355,10 +363,10 @@ func _process(delta: float) -> void:
 				_ad_close_btn.disabled = false
 				_style_tactile_button(_ad_close_btn, PALETTE.carrot_face, PALETTE.carrot_border, PALETTE.carrot_lip, PALETTE.text_light, 18, 6)
 			if _ad_close_lbl != null:
-				_ad_close_lbl.text = "Devam Et  ✕"
+				_ad_close_lbl.text = Loc.t("ad_continue")
 		else:
 			if _ad_close_lbl != null:
-				_ad_close_lbl.text = "%d sn..." % int(ceil(_ad_countdown_sec))
+				_ad_close_lbl.text = Loc.t("ad_wait_sec") % int(ceil(_ad_countdown_sec))
 
 func _update_timer_label() -> void:
 	var mins := _elapsed_sec / 60
@@ -758,7 +766,7 @@ func _build_home_screen() -> void:
 	speech_well.add_theme_stylebox_override("panel", _make_recessed_style(Color("#F4E9D6"), Color("#CBAE83"), 14, 12, 8))
 	hero_vbox.add_child(speech_well)
 
-	_home_speech_label = _make_label(BUNNY_QUOTES[0], 13, PALETTE.text_main, false)
+	_home_speech_label = _make_label(str(Loc.quotes()[0]), 13, PALETTE.text_main, false)
 	_home_speech_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_home_speech_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	speech_well.add_child(_home_speech_label)
@@ -783,7 +791,7 @@ func _build_home_screen() -> void:
 		play_hb.add_child(_make_icon_rect(_get_ui_tex("icon_play"), Vector2(26, 26)))
 	elif _bunny_idle_tex != null:
 		play_hb.add_child(_make_icon_rect(_bunny_idle_tex, Vector2(32, 32)))
-	_home_play_btn_label = _make_label("OYNA  •  Bölüm 1", 20, Color("#FFF9EC"), true, 2, Color("#A94E27"), 2, Color("#A94E27"))
+	_home_play_btn_label = _make_label(Loc.t("play_level") % (GameState.unlocked_level_index + 1), 20, Color("#FFF9EC"), true, 2, Color("#A94E27"), 2, Color("#A94E27"))
 	_home_play_btn_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	play_hb.add_child(_home_play_btn_label)
 	play_btn.pressed.connect(func():
@@ -803,7 +811,7 @@ func _build_home_screen() -> void:
 	daily_btn.add_child(daily_hb)
 	if _get_ui_tex("pop_icon_fire") != null:
 		daily_hb.add_child(_make_icon_rect(_get_ui_tex("pop_icon_fire"), Vector2(24, 24)))
-	var daily_lbl := _make_label("GÜNLÜK", 16, Color.WHITE, true, 2, Color("#A83D60"), 2, Color("#A83D60"))
+	var daily_lbl := _make_label(Loc.t("daily"), 16, Color.WHITE, true, 2, Color("#A83D60"), 2, Color("#A83D60"))
 	daily_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	daily_hb.add_child(daily_lbl)
 	daily_btn.pressed.connect(func():
@@ -824,7 +832,7 @@ func _build_home_screen() -> void:
 	league_btn.add_child(lg_hb)
 	if _get_ui_tex("rank_activity_award_podium_gold") != null:
 		lg_hb.add_child(_make_icon_rect(_get_ui_tex("rank_activity_award_podium_gold"), Vector2(24, 24)))
-	var lg_lbl := _make_label("LİG", 16, PALETTE.text_main, true, 1, Color("#FFF4DC"), 1)
+	var lg_lbl := _make_label(Loc.t("league"), 16, PALETTE.text_main, true, 1, Color("#FFF4DC"), 1)
 	lg_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	lg_hb.add_child(lg_lbl)
 	league_btn.pressed.connect(func():
@@ -852,9 +860,19 @@ func _build_home_screen() -> void:
 	if _get_ui_tex("game_pattern_icon_pattern_paw") != null:
 		lvl_hdr_hbox.add_child(_make_icon_rect(_get_ui_tex("game_pattern_icon_pattern_paw"), Vector2(22, 22), Color("#A98762")))
 
-	var lvl_hdr := _make_label("Bölümler", 18, PALETTE.text_main, true, 1, Color("#FFF4DC"), 1)
+	var lvl_hdr := _make_label(Loc.t("chapters"), 18, PALETTE.text_main, true, 1, Color("#FFF4DC"), 1)
 	lvl_hdr.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	lvl_hdr_hbox.add_child(lvl_hdr)
+
+	var lang_btn := Button.new()
+	lang_btn.text = "🌐 " + Loc.get_short_code()
+	lang_btn.custom_minimum_size = Vector2(74, 34)
+	_style_tactile_button(lang_btn, PALETTE.cream_face, PALETTE.card_border, PALETTE.cream_lip, PALETTE.text_main, 12, 3, 10, 2)
+	lang_btn.pressed.connect(func():
+		SoundManager.play("click")
+		_show_language_modal()
+	)
+	lvl_hdr_hbox.add_child(lang_btn)
 
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -964,11 +982,11 @@ func _populate_level_grid() -> void:
 
 func _tier_tr(tier: String) -> String:
 	match tier.to_lower():
-		"easy": return "Kolay"
-		"medium": return "Orta"
-		"hard": return "Zor"
-		"expert", "super_hard": return "Uzman"
-		_: return "Normal"
+		"easy": return Loc.t("tier_easy")
+		"medium": return Loc.t("tier_medium")
+		"hard": return Loc.t("tier_hard")
+		"expert", "super_hard": return Loc.t("tier_expert")
+		_: return Loc.t("tier_normal")
 
 func _tier_color(tier: String) -> Color:
 	match tier.to_lower():
@@ -1122,7 +1140,7 @@ func _build_game_screen() -> void:
 		lvl_badge.add_theme_stylebox_override("panel", _make_card_style(Color("#F7D48A"), Color("#C18D45"), 14, 2, 3, 12, 4, false))
 	top_row.add_child(lvl_badge)
 
-	_level_title_label = _make_label("Bölüm 1  •  5×5 Kolay", 17, Color("#704A27"), true, 1, Color("#FFF4DC"), 1)
+	_level_title_label = _make_label(Loc.t("level_header") % [1, 5, 5, _tier_tr("easy")], 17, Color("#704A27"), true, 1, Color("#FFF4DC"), 1)
 	_level_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_level_title_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	lvl_badge.add_child(_level_title_label)
@@ -1194,7 +1212,7 @@ func _build_game_screen() -> void:
 	_auto_x_btn.add_child(ax_hb)
 	if _get_ui_tex("game_btn_auto_mark_1") != null:
 		ax_hb.add_child(_make_icon_rect(_get_ui_tex("game_btn_auto_mark_1"), Vector2(16, 16)))
-	_auto_x_lbl = _make_label("Oto-X: Açık", 12, PALETTE.sage_text, false)
+	_auto_x_lbl = _make_label(Loc.t("auto_x_on"), 12, PALETTE.sage_text, false)
 	_auto_x_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ax_hb.add_child(_auto_x_lbl)
 	_auto_x_btn.pressed.connect(func():
@@ -1216,7 +1234,7 @@ func _build_game_screen() -> void:
 	_pattern_btn.add_child(pt_hb)
 	if _get_ui_tex("game_pattern_icon_pattern_paw") != null:
 		pt_hb.add_child(_make_icon_rect(_get_ui_tex("game_pattern_icon_pattern_paw"), Vector2(18, 18), Color("#8C4D69")))
-	_pattern_lbl = _make_label("Desen: Kapalı", 12, Color("#8C4D69"), false)
+	_pattern_lbl = _make_label(Loc.t("pattern_off"), 12, Color("#8C4D69"), false)
 	_pattern_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	pt_hb.add_child(_pattern_lbl)
 	_pattern_btn.pressed.connect(func():
@@ -1234,9 +1252,9 @@ func _build_game_screen() -> void:
 	vbox.add_child(rule_row)
 	_game_anim_cards.append(rule_row)
 
-	rule_row.add_child(_make_rule_pill("game_rule_diagram_color", "Her Renkte", "1 Tavşan", Color("#DFE9CE"), Color("#A8BE8B"), Color("#526A40")))
-	rule_row.add_child(_make_rule_pill("game_rule_diagram_line", "Satır & Sütun", "1 Tavşan", Color("#D7E6F3"), Color("#93B5D1"), Color("#456B89")))
-	rule_row.add_child(_make_rule_pill("game_rule_diagram_touch", "Çapraz Dahil", "Değmez", Color("#F4D8E3"), Color("#D89BB5"), Color("#8C4D69")))
+	rule_row.add_child(_make_rule_pill("game_rule_diagram_color", Loc.t("rule1_a"), Loc.t("rule1_b"), Color("#DFE9CE"), Color("#A8BE8B"), Color("#526A40")))
+	rule_row.add_child(_make_rule_pill("game_rule_diagram_line", Loc.t("rule2_a"), Loc.t("rule2_b"), Color("#D7E6F3"), Color("#93B5D1"), Color("#456B89")))
+	rule_row.add_child(_make_rule_pill("game_rule_diagram_touch", Loc.t("rule3_a"), Loc.t("rule3_b"), Color("#F4D8E3"), Color("#D89BB5"), Color("#8C4D69")))
 
 	# 3. Recessed Pastry-Mold Progress Well (Section 2.6 of Design Spec)
 	var prog_panel := PanelContainer.new()
@@ -1294,7 +1312,7 @@ func _build_game_screen() -> void:
 	vbox.add_child(_draft_bar)
 
 	var draft_apply_btn := Button.new()
-	draft_apply_btn.text = "✓ Taslağı Onayla"
+	draft_apply_btn.text = Loc.t("draft_apply")
 	draft_apply_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	draft_apply_btn.custom_minimum_size = Vector2(0, 44)
 	_style_tactile_button(draft_apply_btn, Color("#A6C98A"), Color("#526A40"), Color("#7FA362"), Color.WHITE, 14, 4, 12, 6)
@@ -1302,7 +1320,7 @@ func _build_game_screen() -> void:
 	_draft_bar.add_child(draft_apply_btn)
 
 	var draft_cancel_btn := Button.new()
-	draft_cancel_btn.text = "✕ Taslağı İptal Et"
+	draft_cancel_btn.text = Loc.t("draft_cancel")
 	draft_cancel_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	draft_cancel_btn.custom_minimum_size = Vector2(0, 44)
 	_style_tactile_button(draft_cancel_btn, Color("#E98178"), Color("#913D3A"), Color("#B94E4B"), Color.WHITE, 14, 4, 12, 6)
@@ -1329,7 +1347,7 @@ func _build_game_screen() -> void:
 	toast_vbox.add_theme_constant_override("separation", 2)
 	toast_hbox.add_child(toast_vbox)
 
-	_toast_title = _make_label("İpucu", 14, Color("#A94E27"), true)
+	_toast_title = _make_label(Loc.t("tool_hint"), 14, Color("#A94E27"), true)
 	toast_vbox.add_child(_toast_title)
 
 	_toast_body = _make_label("", 12, PALETTE.text_main, false)
@@ -1350,12 +1368,12 @@ func _build_game_screen() -> void:
 	vbox.add_child(tools_hbox)
 	_game_anim_cards.append(tools_hbox)
 
-	var undo_dict := _make_tool_button(_get_ui_tex("game_icon_undo"), "Geri Al", Color("#E6D7BC"), Color("#A98762"), Color("#CBAE83"), false)
+	var undo_dict := _make_tool_button(_get_ui_tex("game_icon_undo"), Loc.t("tool_undo"), Color("#E6D7BC"), Color("#A98762"), Color("#CBAE83"), false)
 	_undo_btn = undo_dict["button"]
 	_undo_btn.pressed.connect(func(): _board_view.undo_move())
 	tools_hbox.add_child(_undo_btn)
 
-	var clear_dict := _make_tool_button(_get_ui_tex("icon_broom"), "Temizle", Color("#F1C4BA"), Color("#C27B6D"), Color("#D88D80"), false, Color.WHITE)
+	var clear_dict := _make_tool_button(_get_ui_tex("icon_broom"), Loc.t("tool_clear"), Color("#F1C4BA"), Color("#C27B6D"), Color("#D88D80"), false, Color.WHITE)
 	var clear_btn: Button = clear_dict["button"]
 	clear_btn.pressed.connect(func():
 		_toast_panel.visible = false
@@ -1363,26 +1381,26 @@ func _build_game_screen() -> void:
 	)
 	tools_hbox.add_child(clear_btn)
 
-	var draft_dict := _make_tool_button(_get_ui_tex("game_icon_draft_pencil"), "Taslak", Color("#D7E6F3"), Color("#93B5D1"), Color("#A6C2DC"), false)
+	var draft_dict := _make_tool_button(_get_ui_tex("game_icon_draft_pencil"), Loc.t("tool_draft"), Color("#D7E6F3"), Color("#93B5D1"), Color("#A6C2DC"), false)
 	_draft_btn = draft_dict["button"]
 	_draft_icon_rect = draft_dict["icon"]
 	_draft_caption_lbl = draft_dict["caption"]
 	_draft_btn.pressed.connect(func(): _board_view.toggle_draft_mode())
 	tools_hbox.add_child(_draft_btn)
 
-	var hint_dict := _make_tool_button(_get_ui_tex("game_icon_hint_lamp"), "İpucu", Color("#F2E3A9"), Color("#C19C4C"), Color("#D3B36D"), true)
+	var hint_dict := _make_tool_button(_get_ui_tex("game_icon_hint_lamp"), Loc.t("tool_hint"), Color("#F2E3A9"), Color("#C19C4C"), Color("#D3B36D"), true)
 	_hint_btn = hint_dict["button"]
 	_hint_badge_lbl = hint_dict["badge"]
 	_hint_btn.pressed.connect(_on_hint_pressed)
 	tools_hbox.add_child(_hint_btn)
 
-	var carrot_dict := _make_tool_button(_carrot_tex, "Havuç", Color("#F4D0AD"), Color("#C18D45"), Color("#D8A46F"), true)
+	var carrot_dict := _make_tool_button(_carrot_tex, Loc.t("tool_carrot"), Color("#F4D0AD"), Color("#C18D45"), Color("#D8A46F"), true)
 	_carrot_btn = carrot_dict["button"]
 	_carrot_badge_lbl = carrot_dict["badge"]
 	_carrot_btn.pressed.connect(_on_carrot_pressed)
 	tools_hbox.add_child(_carrot_btn)
 
-	var mode_dict := _make_tool_button(_get_ui_tex("game_icon_mark_white_brush"), "Önce X", PALETTE.cream_face, PALETTE.card_border, PALETTE.cream_lip, false, PALETTE.text_main)
+	var mode_dict := _make_tool_button(_get_ui_tex("game_icon_mark_white_brush"), Loc.t("tool_first_x"), PALETTE.cream_face, PALETTE.card_border, PALETTE.cream_lip, false, PALETTE.text_main)
 	_mode_btn = mode_dict["button"]
 	_mode_icon_rect = mode_dict["icon"]
 	_mode_caption_lbl = mode_dict["caption"]
@@ -1410,7 +1428,8 @@ func _show_home_screen() -> void:
 	_home_screen.visible = true
 	_game_screen.visible = false
 	_modal_layer.visible = false
-	_home_speech_label.text = BUNNY_QUOTES[randi() % BUNNY_QUOTES.size()]
+	var q := Loc.quotes()
+	_home_speech_label.text = str(q[randi() % q.size()])
 	_refresh_all_ui()
 	_populate_level_grid()
 	_animate_cards_enter(_home_anim_cards)
@@ -1437,7 +1456,7 @@ func start_level(idx: int) -> void:
 	_modal_layer.visible = false
 	_toast_panel.visible = false
 
-	_level_title_label.text = "Bölüm %d  •  %d×%d %s" % [_active_level_idx + 1, sz, sz, tier_tr]
+	_level_title_label.text = Loc.t("level_header") % [_active_level_idx + 1, sz, sz, tier_tr]
 	_update_timer_label()
 	_update_lives_label()
 	_refresh_settings_buttons()
@@ -1502,7 +1521,7 @@ func _refresh_settings_buttons() -> void:
 
 	if _auto_x_btn != null:
 		if _auto_x_lbl != null:
-			_auto_x_lbl.text = "Oto-X: Açık" if GameState.auto_cross_enabled else "Oto-X: Kapalı"
+			_auto_x_lbl.text = Loc.t("auto_x_on") if GameState.auto_cross_enabled else Loc.t("auto_x_off")
 			_auto_x_lbl.label_settings.font_color = PALETTE.sage_text if GameState.auto_cross_enabled else PALETTE.text_main
 		_style_tactile_button(
 			_auto_x_btn,
@@ -1517,7 +1536,7 @@ func _refresh_settings_buttons() -> void:
 		)
 	if _pattern_btn != null:
 		if _pattern_lbl != null:
-			_pattern_lbl.text = "Desen: Açık" if GameState.pattern_mode_enabled else "Desen: Kapalı"
+			_pattern_lbl.text = Loc.t("pattern_on") if GameState.pattern_mode_enabled else Loc.t("pattern_off")
 			_pattern_lbl.label_settings.font_color = Color("#8C4D69") if GameState.pattern_mode_enabled else PALETTE.text_main
 		_style_tactile_button(
 			_pattern_btn,
@@ -1536,7 +1555,7 @@ func _refresh_settings_buttons() -> void:
 				_mode_icon_rect.texture = _bunny_idle_tex
 				_mode_icon_rect.modulate = Color.WHITE
 			if _mode_caption_lbl != null:
-				_mode_caption_lbl.text = "Önce Tavşan"
+				_mode_caption_lbl.text = Loc.t("tool_first_bunny")
 				_mode_caption_lbl.label_settings.font_color = Color.WHITE
 			_style_tactile_button(_mode_btn, PALETTE.berry_face, PALETTE.berry_border, PALETTE.berry_lip, Color.WHITE, 17, 6, 4, 6)
 		else:
@@ -1545,7 +1564,7 @@ func _refresh_settings_buttons() -> void:
 				_mode_icon_rect.texture = x_tex
 				_mode_icon_rect.modulate = PALETTE.text_main
 			if _mode_caption_lbl != null:
-				_mode_caption_lbl.text = "Önce X"
+				_mode_caption_lbl.text = Loc.t("tool_first_x")
 				_mode_caption_lbl.label_settings.font_color = PALETTE.text_main
 			_style_tactile_button(_mode_btn, PALETTE.cream_face, PALETTE.card_border, PALETTE.cream_lip, PALETTE.text_main, 17, 6, 4, 6)
 
@@ -1557,15 +1576,15 @@ func _refresh_booster_buttons() -> void:
 
 func _refresh_all_ui() -> void:
 	if _home_streak_label != null:
-		_home_streak_label.text = "%d Gün" % GameState.streak_days
+		_home_streak_label.text = Loc.t("streak_days") % GameState.streak_days
 	if _home_trophy_label != null:
-		_home_trophy_label.text = "%d Kupa" % GameState.player_trophies
+		_home_trophy_label.text = Loc.t("trophies") % GameState.player_trophies
 	if _home_hints_label != null:
 		_home_hints_label.text = str(GameState.hints_count)
 	if _home_carrots_label != null:
 		_home_carrots_label.text = str(GameState.carrots_count)
 	if _home_play_btn_label != null:
-		_home_play_btn_label.text = "OYNA  •  Bölüm %d" % (GameState.unlocked_level_index + 1)
+		_home_play_btn_label.text = Loc.t("play_level") % (GameState.unlocked_level_index + 1)
 	_refresh_booster_buttons()
 	_refresh_settings_buttons()
 
@@ -1580,7 +1599,7 @@ func _on_draft_state_changed(is_draft: bool) -> void:
 		if _draft_icon_rect != null and sel_tex != null:
 			_draft_icon_rect.texture = sel_tex
 		if _draft_caption_lbl != null:
-			_draft_caption_lbl.text = "Aktif" if is_draft else "Taslak"
+			_draft_caption_lbl.text = Loc.t("tool_confirm") if is_draft else Loc.t("tool_draft")
 			_draft_caption_lbl.label_settings.font_color = Color.WHITE if is_draft else PALETTE.text_main
 		_style_tactile_button(
 			_draft_btn,
@@ -1606,34 +1625,34 @@ func _on_mistake_made(_cell: Vector2i, reason: String) -> void:
 	_update_lives_label()
 	if lost_idx >= 0 and lost_idx < _heart_icons.size():
 		_animate_heart_loss(_heart_icons[lost_idx])
-	_show_toast("Hatalı Hamle! (-1 Can)", reason)
+	_show_toast(Loc.t("mistake_title"), reason)
 	if _lives <= 0:
 		_is_playing = false
 		_show_out_of_lives_modal()
 
 func _on_hint_pressed() -> void:
 	if GameState.hints_count <= 0:
-		_show_ad_modal("Ücretsiz İpucu", "Kısa tanıtımı izleyerek +3 İpucu kazanabilirsin!", func():
-			GameState.add_free_boosters(3, 0)
-			_show_toast("+3 İpucu Eklendi!", "3 yeni ipucu çantana eklendi!")
+		_show_ad_modal(Loc.t("free_hint_title"), Loc.t("free_hint_sub"), func():
+			GameState.add_free_boosters(2, 0)
+			_show_toast(Loc.t("added_hint_title"), Loc.t("added_hint_msg"))
 		)
 		return
 	var res := _board_view.request_and_apply_hint()
 	if not res.is_empty():
 		GameState.use_hint()
-		_show_toast(str(res.get("title", "İpucu")), str(res.get("message", "")))
+		_show_toast(str(res.get("title", Loc.t("tool_hint"))), str(res.get("message", "")))
 
 func _on_carrot_pressed() -> void:
 	if GameState.carrots_count <= 0:
-		_show_ad_modal("Ücretsiz Altın Havuç", "Kısa tanıtımı izleyerek +2 Altın Havuç kazanabilirsin!", func():
+		_show_ad_modal(Loc.t("free_carrot_title"), Loc.t("free_carrot_sub"), func():
 			GameState.add_free_boosters(0, 2)
-			_show_toast("+2 Altın Havuç Eklendi!", "2 yeni altın havuç çantana eklendi!")
+			_show_toast(Loc.t("added_carrot_title"), Loc.t("added_carrot_msg"))
 		)
 		return
 	var res := _board_view.apply_carrot_booster()
 	if not res.is_empty():
 		GameState.use_carrot()
-		_show_toast(str(res.get("title", "Altın Havuç")), str(res.get("message", "")))
+		_show_toast(str(res.get("title", Loc.t("tool_carrot"))), str(res.get("message", "")))
 
 func _on_board_solved() -> void:
 	_is_playing = false
@@ -1641,8 +1660,8 @@ func _on_board_solved() -> void:
 	var show_ad: bool = bool(reward.get("show_interstitial_ad", false))
 	if show_ad:
 		_show_ad_modal(
-			"Kısa Bir Mola",
-			"Yeni bölüme geçmeden önce orman fırınından kısa bir mola!",
+			Loc.t("ad_break_title"),
+			Loc.t("ad_break_sub"),
 			func(): _show_win_modal(reward)
 		)
 	else:
@@ -1722,7 +1741,7 @@ func _show_ad_modal(ad_title: String, ad_subtitle: String, on_complete: Callable
 	if _carrot_tex != null:
 		ad_icons.add_child(_make_icon_rect(_carrot_tex, Vector2(54, 54)))
 
-	var sponsor_lbl := _make_label("BUNDOKU ORMAN FIRINI", 17, Color("#704A27"), true, 1, Color("#FFF4DC"), 1)
+	var sponsor_lbl := _make_label(Loc.t("ad_sponsor"), 17, Color("#704A27"), true, 1, Color("#FFF4DC"), 1)
 	sponsor_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	ad_vb.add_child(sponsor_lbl)
 
@@ -1751,7 +1770,7 @@ func _show_ad_modal(ad_title: String, ad_subtitle: String, on_complete: Callable
 	close_center.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ad_close_btn.add_child(close_center)
 
-	_ad_close_lbl = _make_label("3 sn...", 16, PALETTE.text_light, true, 2, PALETTE.carrot_border)
+	_ad_close_lbl = _make_label(Loc.t("ad_wait_sec") % 3, 16, PALETTE.text_light, true, 2, PALETTE.carrot_border)
 	_ad_close_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	close_center.add_child(_ad_close_lbl)
 
@@ -1768,7 +1787,7 @@ func _show_win_modal(reward: Dictionary) -> void:
 	var modal := _clear_modal()
 	var vbox: VBoxContainer = modal["vbox"]
 
-	var hdr := _make_label("Harika! Bölüm %d Tamamlandı!" % (_active_level_idx + 1), 24, PALETTE.text_main, true, 2, PALETTE.cream_face, 2)
+	var hdr := _make_label(Loc.t("win_title") % (_active_level_idx + 1), 24, PALETTE.text_main, true, 2, PALETTE.cream_face, 2)
 	hdr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(hdr)
 
@@ -1801,16 +1820,16 @@ func _show_win_modal(reward: Dictionary) -> void:
 	var secs := _elapsed_sec % 60
 	var bonus_txt := ""
 	if int(reward.get("bonus_hint", 0)) > 0:
-		bonus_txt += "\nBonus Ödül: +1 İpucu"
+		bonus_txt += Loc.t("bonus_hint")
 	if int(reward.get("bonus_carrot", 0)) > 0:
-		bonus_txt += "\nBonus Ödül: +1 Altın Havuç"
+		bonus_txt += Loc.t("bonus_carrot")
 
 	var stats_well := PanelContainer.new()
 	stats_well.add_theme_stylebox_override("panel", _make_recessed_style(Color("#F4E9D6"), Color("#CBAE83"), 14, 14, 10))
 	vbox.add_child(stats_well)
 
 	var stats_lbl := _make_label(
-		"Süre: %02d:%02d   •   Kazanılan Kupa: +%d%s" % [
+		Loc.t("win_stats") % [
 			mins, secs, int(reward.get("trophy_gain", 20)), bonus_txt
 		],
 		15,
@@ -1825,7 +1844,7 @@ func _show_win_modal(reward: Dictionary) -> void:
 	vbox.add_child(btn_row)
 
 	var home_btn := Button.new()
-	home_btn.text = "Ana Menü"
+	home_btn.text = Loc.t("home_menu")
 	home_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	home_btn.custom_minimum_size = Vector2(0, 54)
 	_style_tactile_button(home_btn, PALETTE.cream_face, PALETTE.card_border, PALETTE.cream_lip, PALETTE.text_main, 18, 6, 12, 8)
@@ -1836,7 +1855,7 @@ func _show_win_modal(reward: Dictionary) -> void:
 	btn_row.add_child(home_btn)
 
 	var next_btn := Button.new()
-	next_btn.text = "Sonraki Bölüm"
+	next_btn.text = Loc.t("next_level")
 	next_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	next_btn.custom_minimum_size = Vector2(0, 54)
 	_style_tactile_button(next_btn, PALETTE.carrot_face, PALETTE.carrot_border, PALETTE.carrot_lip, PALETTE.text_light, 18, 6, 12, 8)
@@ -1850,7 +1869,7 @@ func _show_out_of_lives_modal() -> void:
 	var modal := _clear_modal()
 	var vbox: VBoxContainer = modal["vbox"]
 
-	var hdr := _make_label("Canların Tükendi!", 24, Color("#B74E4C"), true, 2, PALETTE.cream_face, 2)
+	var hdr := _make_label(Loc.t("out_of_lives_title"), 24, Color("#B74E4C"), true, 2, PALETTE.cream_face, 2)
 	hdr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(hdr)
 
@@ -1860,7 +1879,7 @@ func _show_out_of_lives_modal() -> void:
 		vbox.add_child(bc)
 
 	var desc := _make_label(
-		"3 canını yenileyip kaldığın yerden devam edebilir veya bölümü baştan başlatabilirsin.",
+		Loc.t("out_of_lives_desc"),
 		14,
 		PALETTE.text_main,
 		false
@@ -1870,12 +1889,12 @@ func _show_out_of_lives_modal() -> void:
 	vbox.add_child(desc)
 
 	var revive_btn := Button.new()
-	revive_btn.text = "Canları Yenile & Devam Et"
+	revive_btn.text = Loc.t("revive_btn")
 	revive_btn.custom_minimum_size = Vector2(0, 54)
 	_style_tactile_button(revive_btn, PALETTE.carrot_face, PALETTE.carrot_border, PALETTE.carrot_lip, PALETTE.text_light, 18, 6, 12, 8)
 	revive_btn.pressed.connect(func():
 		SoundManager.play("click")
-		_show_ad_modal("Can Yenileme", "Kısa mola sonunda 3 canın yenilenecek ve kaldığın yerden devam edeceksin!", func():
+		_show_ad_modal(Loc.t("revive_ad_title"), Loc.t("revive_ad_sub"), func():
 			SoundManager.play("carrot")
 			_lives = 3
 			_update_lives_label()
@@ -1887,7 +1906,7 @@ func _show_out_of_lives_modal() -> void:
 	vbox.add_child(revive_btn)
 
 	var restart_btn := Button.new()
-	restart_btn.text = "Bölümü Baştan Başlat"
+	restart_btn.text = Loc.t("restart_btn")
 	restart_btn.custom_minimum_size = Vector2(0, 48)
 	_style_tactile_button(restart_btn, PALETTE.cream_face, PALETTE.card_border, PALETTE.cream_lip, PALETTE.text_main, 18, 5, 12, 8)
 	restart_btn.pressed.connect(func():
@@ -1900,7 +1919,7 @@ func _show_league_modal() -> void:
 	var modal := _clear_modal()
 	var vbox: VBoxContainer = modal["vbox"]
 
-	var hdr := _make_label("Tavşan Ligi Sıralaması", 24, PALETTE.text_main, true, 2, PALETTE.cream_face, 2)
+	var hdr := _make_label(Loc.t("league_title"), 24, PALETTE.text_main, true, 2, PALETTE.cream_face, 2)
 	hdr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(hdr)
 
@@ -1951,11 +1970,11 @@ func _show_league_modal() -> void:
 		rank_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		rh.add_child(rank_lbl)
 
-		var tr_lbl := _make_label("%d Kupa" % int(e.get("trophies", 0)), 14, Color("#A94E27"), true)
+		var tr_lbl := _make_label(Loc.t("trophies") % int(e.get("trophies", 0)), 14, Color("#A94E27"), true)
 		rh.add_child(tr_lbl)
 
 	var close_btn := Button.new()
-	close_btn.text = "Kapat"
+	close_btn.text = Loc.t("close_btn")
 	close_btn.custom_minimum_size = Vector2(0, 50)
 	_style_tactile_button(close_btn, PALETTE.carrot_face, PALETTE.carrot_border, PALETTE.carrot_lip, PALETTE.text_light, 18, 6, 12, 8)
 	close_btn.pressed.connect(func():
@@ -1963,3 +1982,86 @@ func _show_league_modal() -> void:
 		_modal_layer.visible = false
 	)
 	vbox.add_child(close_btn)
+
+func _show_language_modal() -> void:
+	var modal := _clear_modal()
+	var vbox: VBoxContainer = modal["vbox"]
+
+	var hdr := _make_label("🌐 " + Loc.t("lang_modal_title"), 22, PALETTE.text_main, true, 2, PALETTE.cream_face, 2)
+	hdr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(hdr)
+
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(0, 400)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	vbox.add_child(scroll)
+
+	var grid_margin := MarginContainer.new()
+	grid_margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	grid_margin.mouse_filter = Control.MOUSE_FILTER_PASS
+	grid_margin.add_theme_constant_override("margin_top", 4)
+	grid_margin.add_theme_constant_override("margin_bottom", 6)
+	grid_margin.add_theme_constant_override("margin_left", 4)
+	grid_margin.add_theme_constant_override("margin_right", 6)
+	scroll.add_child(grid_margin)
+
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	grid.mouse_filter = Control.MOUSE_FILTER_PASS
+	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("v_separation", 8)
+	grid_margin.add_child(grid)
+
+	for item in Loc.LANGUAGES:
+		var code: String = str(item["code"])
+		var lname: String = str(item["name"])
+		var is_sel: bool = (code == Loc.current_lang)
+
+		var lbtn := Button.new()
+		lbtn.text = ("✓ " if is_sel else "") + lname
+		lbtn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		lbtn.custom_minimum_size = Vector2(180, 44)
+		lbtn.mouse_filter = Control.MOUSE_FILTER_PASS
+		_style_tactile_button(
+			lbtn,
+			PALETTE.sage_face if is_sel else PALETTE.cream_face,
+			PALETTE.sage_border if is_sel else PALETTE.card_border,
+			Color("#A7BB8D") if is_sel else PALETTE.cream_lip,
+			PALETTE.sage_text if is_sel else PALETTE.text_main,
+			14,
+			4,
+			10,
+			4
+		)
+		var captured_code := code
+		lbtn.pressed.connect(func():
+			SoundManager.play("click")
+			GameState.set_language(captured_code)
+			_modal_layer.visible = false
+			_rebuild_all_ui_for_language()
+		)
+		grid.add_child(lbtn)
+
+	var close_btn := Button.new()
+	close_btn.text = Loc.t("close_btn")
+	close_btn.custom_minimum_size = Vector2(0, 48)
+	_style_tactile_button(close_btn, PALETTE.carrot_face, PALETTE.carrot_border, PALETTE.carrot_lip, PALETTE.text_light, 18, 6, 12, 8)
+	close_btn.pressed.connect(func():
+		SoundManager.play("click")
+		_modal_layer.visible = false
+	)
+	vbox.add_child(close_btn)
+
+func _rebuild_all_ui_for_language() -> void:
+	for c in _home_screen.get_children():
+		_home_screen.remove_child(c)
+		c.queue_free()
+	for c in _game_screen.get_children():
+		_game_screen.remove_child(c)
+		c.queue_free()
+	_build_home_screen()
+	_build_game_screen()
+	_apply_safe_area_margins()
+	_show_home_screen()

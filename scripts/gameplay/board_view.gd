@@ -443,7 +443,7 @@ func _place_bunny_at(pos: Vector2i, src: int) -> void:
 	var conflicts := _find_conflicts_for_cell(pos)
 	if not conflicts.is_empty():
 		SoundManager.play("error")
-		mistake_made.emit(pos, "Kural İhlali! Aynı satır, sütun, bölge veya çapraz komşuda iki tavşan olamaz.")
+		mistake_made.emit(pos, Loc.t("mistake_msg"))
 	elif GameState.auto_cross_enabled:
 		var cross_src := SOURCE_DRAFT if draft_mode else SOURCE_AUTO
 		_apply_auto_cross_for_bunny(pos, cross_src)
@@ -665,6 +665,6 @@ func apply_carrot_booster() -> Dictionary:
 	_recheck_conflicts_and_win()
 	queue_redraw()
 	return {
-		"title": "Altın Havuç Kullanıldı!",
-		"message": "En zorlu bölgedeki tavşan (Satır %d, Sütun %d) ortaya çıkarıldı!" % [best_pos.x + 1, best_pos.y + 1]
+		"title": Loc.t("carrot_used_title"),
+		"message": Loc.t("carrot_used_msg") % [best_pos.x + 1, best_pos.y + 1]
 	}

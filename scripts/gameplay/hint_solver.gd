@@ -29,8 +29,8 @@ static func compute_hint(
 					"type": "remove_wrong_bunny",
 					"target_cells": [pos],
 					"highlight_cells": [pos],
-					"title": "Hatalı Tavşan Düzeltmesi",
-					"message": "Satır %d, Sütun %d hücresindeki tavşan kurallarla çelişiyor. Önce bunu kaldıralım!" % [r + 1, c + 1]
+					"title": Loc.t("h_wrong_bunny_t"),
+					"message": Loc.t("h_wrong_bunny_m") % [r + 1, c + 1]
 				}
 
 	# 2. Check for wrong X marks placed on actual solution cells
@@ -40,8 +40,8 @@ static func compute_hint(
 				"type": "clear_wrong_cross",
 				"target_cells": [sol_pos],
 				"highlight_cells": [sol_pos],
-				"title": "Hatalı X İşareti",
-				"message": "Satır %d, Sütun %d aslında bir tavşan hücresi! Buradaki X işaretini temizleyelim." % [sol_pos.x + 1, sol_pos.y + 1]
+				"title": Loc.t("h_wrong_x_t"),
+				"message": Loc.t("h_wrong_x_m") % [sol_pos.x + 1, sol_pos.y + 1]
 			}
 
 	# 3. BasicMarkStep: Check if any correctly placed Bunny still has empty cells in its row/col/region/neighbors
@@ -62,8 +62,8 @@ static func compute_hint(
 						"type": "place_crosses",
 						"target_cells": elim,
 						"highlight_cells": [Vector2i(r, c)] + elim,
-						"title": "Temel Eleme Kuralı",
-						"message": "Satır %d, Sütun %d'deki tavşan kendi satırını, sütununu, bölgesini ve komşu hücrelerini X ile kapatır." % [r + 1, c + 1]
+						"title": Loc.t("h_basic_t"),
+						"message": Loc.t("h_basic_m") % [r + 1, c + 1]
 					}
 
 	# 4. SingleCandidateStep — Region with only 1 empty cell left
@@ -86,8 +86,8 @@ static func compute_hint(
 				"type": "place_bunny",
 				"target_cells": [target],
 				"highlight_cells": reg_cells,
-				"title": "Bölgede Tek Aday!",
-				"message": "Bu renkli bölgede tavşan koyulabilecek yalnızca tek bir boş hücre (Satır %d, Sütun %d) kaldı!" % [target.x + 1, target.y + 1]
+				"title": Loc.t("h_single_reg_t"),
+				"message": Loc.t("h_single_reg_m") % [target.x + 1, target.y + 1]
 			}
 
 	# 5. SingleCandidateStep — Row with only 1 empty cell left
@@ -108,8 +108,8 @@ static func compute_hint(
 				"type": "place_bunny",
 				"target_cells": [target],
 				"highlight_cells": row_cells,
-				"title": "Satırda Tek Aday!",
-				"message": "%d. satırda tavşan için yalnızca tek bir boş hücre (Sütun %d) kaldı!" % [r + 1, target.y + 1]
+				"title": Loc.t("h_single_row_t"),
+				"message": Loc.t("h_single_row_m") % [r + 1, target.y + 1]
 			}
 
 	# 6. SingleCandidateStep — Column with only 1 empty cell left
@@ -130,8 +130,8 @@ static func compute_hint(
 				"type": "place_bunny",
 				"target_cells": [target],
 				"highlight_cells": col_cells,
-				"title": "Sütunda Tek Aday!",
-				"message": "%d. sütunda tavşan için yalnızca tek bir boş hücre (Satır %d) kaldı!" % [c + 1, target.x + 1]
+				"title": Loc.t("h_single_col_t"),
+				"message": Loc.t("h_single_col_m") % [c + 1, target.x + 1]
 			}
 
 	# 7. RegionLineStep: All empty cells of a region lie in the same Row or Column
@@ -165,8 +165,8 @@ static func compute_hint(
 					"type": "place_crosses",
 					"target_cells": elim,
 					"highlight_cells": empty_cells + elim,
-					"title": "Bölge-Satır Kesişimi",
-					"message": "Bu bölgenin tüm boş hücreleri %d. satırda yer alıyor. Dolayısıyla %d. satırın bölge dışındaki hücrelerinde tavşan olamaz!" % [first_r + 1, first_r + 1]
+					"title": Loc.t("h_line_row_t"),
+					"message": Loc.t("h_line_row_m") % [first_r + 1, first_r + 1]
 				}
 
 		# Check if all empty_cells share the same col
@@ -186,8 +186,8 @@ static func compute_hint(
 					"type": "place_crosses",
 					"target_cells": elim,
 					"highlight_cells": empty_cells + elim,
-					"title": "Bölge-Sütun Kesişimi",
-					"message": "Bu bölgenin tüm boş hücreleri %d. sütunda yer alıyor. Dolayısıyla %d. sütunun bölge dışındaki hücreleri X ile elenir!" % [first_c + 1, first_c + 1]
+					"title": Loc.t("h_line_col_t"),
+					"message": Loc.t("h_line_col_m") % [first_c + 1, first_c + 1]
 				}
 
 	# 8. Neighborhood / Region Wipeout Step:
@@ -222,8 +222,8 @@ static func compute_hint(
 				"type": "place_crosses",
 				"target_cells": elim,
 				"highlight_cells": reg_empty + elim,
-				"title": "Komşuluk Kesişimi Elemesi",
-				"message": "İşaretlenen hücrelere tavşan koymak komşu bölgedeki tüm adayları yok edeceği için bu hücrelerde tavşan olamaz!"
+				"title": Loc.t("h_wipe_t"),
+				"message": Loc.t("h_wipe_m")
 			}
 
 	# 9. Fallback: Reveal the next unplaced Bunny from the solution
@@ -233,8 +233,8 @@ static func compute_hint(
 				"type": "place_bunny",
 				"target_cells": [sol_pos],
 				"highlight_cells": [sol_pos],
-				"title": "Tavşan Konumu Bulundu!",
-				"message": "Mantıksal çözüm adımı: Satır %d, Sütun %d hücresine bir tavşan yerleşmeli!" % [sol_pos.x + 1, sol_pos.y + 1]
+				"title": Loc.t("h_reveal_t"),
+				"message": Loc.t("h_reveal_m") % [sol_pos.x + 1, sol_pos.y + 1]
 			}
 
 	return {}
