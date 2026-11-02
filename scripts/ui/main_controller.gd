@@ -476,13 +476,33 @@ func _style_tactile_button(
 	btn: Button,
 	face_col: Color,
 	border_col: Color,
-	_lip_col: Color,
+	lip_col: Color,
 	text_col: Color = PALETTE.text_main,
 	radius: int = 18,
 	bevel: int = 6,
 	pad_h: int = 12,
 	pad_v: int = 6
 ) -> void:
+	if radius <= 12:
+		var flat_n := StyleBoxFlat.new()
+		flat_n.bg_color = face_col
+		flat_n.border_color = border_col
+		flat_n.set_border_width_all(2)
+		flat_n.border_width_bottom = 2 + bevel
+		flat_n.set_corner_radius_all(radius)
+		flat_n.content_margin_left = float(pad_h)
+		flat_n.content_margin_right = float(pad_h)
+		flat_n.content_margin_top = float(pad_v)
+		flat_n.content_margin_bottom = float(pad_v)
+		btn.add_theme_stylebox_override("normal", flat_n)
+		btn.add_theme_stylebox_override("hover", flat_n)
+		btn.add_theme_stylebox_override("pressed", flat_n)
+		btn.add_theme_stylebox_override("focus", flat_n)
+		btn.add_theme_color_override("font_color", text_col)
+		if _font_extrabold != null:
+			btn.add_theme_font_override("font", _font_extrabold)
+		_attach_button_anim(btn)
+		return
 	var is_compact := (radius <= 15 or bevel <= 4)
 	var prefer_tile := (radius >= 16 and radius <= 18)
 	var key := _pick_chatgpt_container_key(face_col, is_compact, prefer_tile)
@@ -838,14 +858,26 @@ func _build_home_screen() -> void:
 
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	lvl_vbox.add_child(scroll)
+
+	var grid_margin := MarginContainer.new()
+	grid_margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	grid_margin.mouse_filter = Control.MOUSE_FILTER_PASS
+	grid_margin.add_theme_constant_override("margin_top", 6)
+	grid_margin.add_theme_constant_override("margin_bottom", 10)
+	grid_margin.add_theme_constant_override("margin_left", 4)
+	grid_margin.add_theme_constant_override("margin_right", 8)
+	scroll.add_child(grid_margin)
 
 	_level_grid = GridContainer.new()
 	_level_grid.columns = 4
 	_level_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_level_grid.mouse_filter = Control.MOUSE_FILTER_PASS
 	_level_grid.add_theme_constant_override("h_separation", 10)
 	_level_grid.add_theme_constant_override("v_separation", 10)
-	scroll.add_child(_level_grid)
+	grid_margin.add_child(_level_grid)
 
 func _populate_level_grid() -> void:
 	for child in _level_grid.get_children():
@@ -866,6 +898,7 @@ func _populate_level_grid() -> void:
 		var btn := Button.new()
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		btn.custom_minimum_size = Vector2(105, 72)
+		btn.mouse_filter = Control.MOUSE_FILTER_PASS
 
 		var face_col := PALETTE.cream_face
 		var brd_col := PALETTE.card_border
@@ -1305,7 +1338,8 @@ func _build_game_screen() -> void:
 
 	var toast_close_btn := Button.new()
 	toast_close_btn.text = "✕"
-	toast_close_btn.custom_minimum_size = Vector2(30, 30)
+	toast_close_btn.custom_minimum_size = Vector2(34, 34)
+	toast_close_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_style_tactile_button(toast_close_btn, Color("#F4E9D6"), PALETTE.card_border, PALETTE.card_lip, PALETTE.text_main, 10, 3, 4, 2)
 	toast_close_btn.pressed.connect(func(): _toast_panel.visible = false)
 	toast_hbox.add_child(toast_close_btn)
