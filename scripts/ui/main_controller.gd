@@ -285,6 +285,10 @@ func _load_assets() -> void:
 		"tile_gold_sm": "tile_gold_sm",
 		"tile_blue": "tile_blue",
 		"tile_blue_sm": "tile_blue_sm",
+		"tile_pink": "tile_pink",
+		"tile_pink_sm": "tile_pink_sm",
+		"tile_green": "tile_green",
+		"tile_green_sm": "tile_green_sm",
 		"ribbon_gold": "ribbon_gold"
 	}
 	for k in chatgpt_overrides.keys():
@@ -365,16 +369,16 @@ func _update_timer_label() -> void:
 # Cozy Kawaii Bakery StyleBox & Micro-Animation Helpers
 # ------------------------------------------------------------------------------
 
-func _pick_chatgpt_container_key(col: Color, is_compact: bool) -> String:
+func _pick_chatgpt_container_key(col: Color, is_compact: bool, prefer_tile: bool = false) -> String:
 	var suffix := "_sm" if is_compact else ""
 	if col.g > col.r + 0.02 and col.g >= col.b:
-		return "btn_pill_green" + suffix
+		return ("tile_green" if prefer_tile else "btn_pill_green") + suffix
 	if col.b > col.r + 0.02 and col.b >= col.g - 0.04:
 		return "tile_blue" + suffix
 	if col.r > 0.88 and col.g > 0.45 and col.g < 0.74 and col.b < 0.42:
 		return "btn_pill_orange" + suffix
-	if col.r > 0.85 and col.b > col.g - 0.04 and col.g < 0.90:
-		return "btn_pill_pink" + suffix
+	if col.r > 0.85 and col.b > col.g - 0.04 and col.g < 0.92:
+		return ("tile_pink" if prefer_tile else "btn_pill_pink") + suffix
 	if col.r > 0.90 and col.g > 0.72 and col.b < 0.75:
 		return "tile_gold" + suffix
 	return "panel_cream_card" + suffix
@@ -385,7 +389,9 @@ func _make_9slice_style(
 	slice_v: int,
 	pad_h: int,
 	pad_v: int,
-	modulate_col: Color = Color.WHITE
+	modulate_col: Color = Color.WHITE,
+	pad_top_override: int = -1,
+	pad_bot_override: int = -1
 ) -> StyleBox:
 	var tex := _get_ui_tex(tex_key)
 	if tex == null:
@@ -405,8 +411,8 @@ func _make_9slice_style(
 	sb.texture_margin_bottom = float(slice_v)
 	sb.content_margin_left = float(pad_h)
 	sb.content_margin_right = float(pad_h)
-	sb.content_margin_top = float(pad_v)
-	sb.content_margin_bottom = float(pad_v)
+	sb.content_margin_top = float(pad_top_override if pad_top_override >= 0 else pad_v)
+	sb.content_margin_bottom = float(pad_bot_override if pad_bot_override >= 0 else pad_v)
 	sb.modulate_color = modulate_col
 	return sb
 
@@ -420,27 +426,51 @@ func _make_card_style(
 	pad_v: int = 10,
 	_with_shadow: bool = true
 ) -> StyleBox:
+	# Tiny micro-badges, progress slot dots, and thin progress bars use crisp StyleBoxFlat
+	if radius <= 12:
+		var flat := StyleBoxFlat.new()
+		flat.bg_color = bg
+		flat.border_color = border
+		flat.set_border_width_all(border_w)
+		flat.border_width_bottom = border_w + bottom_lip
+		flat.set_corner_radius_all(radius)
+		flat.content_margin_left = float(pad_h)
+		flat.content_margin_right = float(pad_h)
+		flat.content_margin_top = float(pad_v)
+		flat.content_margin_bottom = float(pad_v)
+		return flat
 	var is_compact := (radius <= 16 and bottom_lip <= 4)
-	var key := _pick_chatgpt_container_key(bg, is_compact)
-	var sh := 14 if is_compact else 24
-	var sv := 11 if is_compact else 18
+	var key := _pick_chatgpt_container_key(bg, is_compact, false)
+	var sh := 18 if is_compact else 24
+	var sv := 12 if is_compact else 18
 	var mod := Color(1.0, 1.0, 1.0, bg.a)
 	if border == Color("#A99F90"):
 		mod = Color(0.82, 0.80, 0.76, 0.92)
 	return _make_9slice_style(key, sh, sv, pad_h, pad_v, mod)
 
 func _make_recessed_style(
-	_bg: Color = PALETTE.well_bg,
-	_border: Color = PALETTE.well_border,
+	bg: Color = PALETTE.well_bg,
+	border: Color = PALETTE.well_border,
 	radius: int = 16,
 	pad_h: int = 12,
 	pad_v: int = 6
 ) -> StyleBox:
-	var is_compact := (radius <= 15)
+	if radius <= 10:
+		var flat := StyleBoxFlat.new()
+		flat.bg_color = bg
+		flat.border_color = border
+		flat.set_border_width_all(2)
+		flat.set_corner_radius_all(radius)
+		flat.content_margin_left = float(pad_h)
+		flat.content_margin_right = float(pad_h)
+		flat.content_margin_top = float(pad_v)
+		flat.content_margin_bottom = float(pad_v)
+		return flat
+	var is_compact := (radius <= 14)
 	var key := "panel_recessed_well_sm" if is_compact else "panel_recessed_well"
-	var sh := 16 if is_compact else 24
-	var sv := 12 if is_compact else 18
-	return _make_9slice_style(key, sh, sv, pad_h, pad_v, Color.WHITE)
+	var sh := 18 if is_compact else 24
+	var sv := 14 if is_compact else 16
+	return _make_9slice_style(key, sh, sv, pad_h, maxi(8, pad_v), Color.WHITE)
 
 func _style_tactile_button(
 	btn: Button,
@@ -454,9 +484,10 @@ func _style_tactile_button(
 	pad_v: int = 6
 ) -> void:
 	var is_compact := (radius <= 15 or bevel <= 4)
-	var key := _pick_chatgpt_container_key(face_col, is_compact)
-	var sh := 14 if is_compact else 22
-	var sv := 11 if is_compact else 18
+	var prefer_tile := (radius >= 16 and radius <= 18)
+	var key := _pick_chatgpt_container_key(face_col, is_compact, prefer_tile)
+	var sh := 14 if is_compact else (16 if prefer_tile else 22)
+	var sv := 11 if is_compact else (16 if prefer_tile else 18)
 
 	var normal_sb := _make_9slice_style(key, sh, sv, pad_h, pad_v, Color.WHITE)
 	var hover_sb := _make_9slice_style(key, sh, sv, pad_h, pad_v, Color(1.06, 1.06, 1.06, 1.0))
@@ -914,10 +945,12 @@ func _tier_color(tier: String) -> Color:
 		"expert", "super_hard": return Color("#6A1B9A")
 		_: return PALETTE.text_sec
 
-func _make_rule_pill(diag_key: String, line1: String, line2: String, bg_col: Color, brd_col: Color, txt_col: Color) -> PanelContainer:
+func _make_rule_pill(diag_key: String, line1: String, line2: String, bg_col: Color, _brd_col: Color, txt_col: Color) -> PanelContainer:
 	var pill := PanelContainer.new()
 	pill.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	pill.add_theme_stylebox_override("panel", _make_card_style(bg_col, brd_col, 14, 2, 4, 8, 6, true))
+	pill.custom_minimum_size = Vector2(0, 50)
+	var tile_key := _pick_chatgpt_container_key(bg_col, false, true)
+	pill.add_theme_stylebox_override("panel", _make_9slice_style(tile_key, 16, 14, 8, 7))
 
 	var hb := HBoxContainer.new()
 	hb.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -1048,7 +1081,8 @@ func _build_game_screen() -> void:
 	# Level Badge Ribbon
 	var lvl_badge := PanelContainer.new()
 	lvl_badge.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var ribbon_style := _make_9slice_style("ribbon_gold", 32, 10, 20, 6)
+	lvl_badge.custom_minimum_size = Vector2(0, 44)
+	var ribbon_style := _make_9slice_style("ribbon_gold", 42, 10, 26, 6, Color.WHITE, 4, 8)
 	if ribbon_style != null:
 		lvl_badge.add_theme_stylebox_override("panel", ribbon_style)
 	else:
@@ -1057,11 +1091,13 @@ func _build_game_screen() -> void:
 
 	_level_title_label = _make_label("Bölüm 1  •  5×5 Kolay", 17, Color("#704A27"), true, 1, Color("#FFF4DC"), 1)
 	_level_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_level_title_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	lvl_badge.add_child(_level_title_label)
 
 	# Timer Pill (#E4EBD6 / #A7BB8D)
 	var timer_pill := PanelContainer.new()
-	timer_pill.add_theme_stylebox_override("panel", _make_card_style(Color("#E4EBD6"), Color("#A7BB8D"), 14, 2, 3, 10, 4, false))
+	timer_pill.custom_minimum_size = Vector2(0, 40)
+	timer_pill.add_theme_stylebox_override("panel", _make_9slice_style("btn_pill_green_sm", 18, 12, 12, 6))
 	top_row.add_child(timer_pill)
 
 	var timer_hbox := HBoxContainer.new()
@@ -1095,7 +1131,8 @@ func _build_game_screen() -> void:
 	hdr_vbox.add_child(sub_row)
 
 	var hearts_pill := PanelContainer.new()
-	hearts_pill.add_theme_stylebox_override("panel", _make_card_style(Color("#FFE4E5"), Color("#D88A92"), 14, 2, 3, 10, 4, false))
+	hearts_pill.custom_minimum_size = Vector2(0, 38)
+	hearts_pill.add_theme_stylebox_override("panel", _make_9slice_style("btn_pill_pink_sm", 18, 12, 12, 6))
 	sub_row.add_child(hearts_pill)
 
 	var hearts_hbox := HBoxContainer.new()
