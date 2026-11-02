@@ -268,7 +268,24 @@ func _load_assets() -> void:
 		"icon_sound_on": "icon_sound_on",
 		"icon_sound_off": "icon_sound_off",
 		"icon_play": "icon_play",
-		"icon_ad_video": "icon_ad_video"
+		"icon_ad_video": "icon_ad_video",
+		"panel_cream_card": "panel_cream_card",
+		"panel_cream_card_sm": "panel_cream_card_sm",
+		"panel_wood_frame": "panel_wood_frame",
+		"panel_wood_frame_sm": "panel_wood_frame_sm",
+		"panel_recessed_well": "panel_recessed_well",
+		"panel_recessed_well_sm": "panel_recessed_well_sm",
+		"btn_pill_orange": "btn_pill_orange",
+		"btn_pill_orange_sm": "btn_pill_orange_sm",
+		"btn_pill_pink": "btn_pill_pink",
+		"btn_pill_pink_sm": "btn_pill_pink_sm",
+		"btn_pill_green": "btn_pill_green",
+		"btn_pill_green_sm": "btn_pill_green_sm",
+		"tile_gold": "tile_gold",
+		"tile_gold_sm": "tile_gold_sm",
+		"tile_blue": "tile_blue",
+		"tile_blue_sm": "tile_blue_sm",
+		"ribbon_gold": "ribbon_gold"
 	}
 	for k in chatgpt_overrides.keys():
 		var cpath := "res://assets/chatgpt_ui/%s.png" % chatgpt_overrides[k]
@@ -348,6 +365,51 @@ func _update_timer_label() -> void:
 # Cozy Kawaii Bakery StyleBox & Micro-Animation Helpers
 # ------------------------------------------------------------------------------
 
+func _pick_chatgpt_container_key(col: Color, is_compact: bool) -> String:
+	var suffix := "_sm" if is_compact else ""
+	if col.g > col.r + 0.02 and col.g >= col.b:
+		return "btn_pill_green" + suffix
+	if col.b > col.r + 0.02 and col.b >= col.g - 0.04:
+		return "tile_blue" + suffix
+	if col.r > 0.88 and col.g > 0.45 and col.g < 0.74 and col.b < 0.42:
+		return "btn_pill_orange" + suffix
+	if col.r > 0.85 and col.b > col.g - 0.04 and col.g < 0.90:
+		return "btn_pill_pink" + suffix
+	if col.r > 0.90 and col.g > 0.72 and col.b < 0.75:
+		return "tile_gold" + suffix
+	return "panel_cream_card" + suffix
+
+func _make_9slice_style(
+	tex_key: String,
+	slice_h: int,
+	slice_v: int,
+	pad_h: int,
+	pad_v: int,
+	modulate_col: Color = Color.WHITE
+) -> StyleBox:
+	var tex := _get_ui_tex(tex_key)
+	if tex == null:
+		var fallback := StyleBoxFlat.new()
+		fallback.bg_color = PALETTE.card_face * modulate_col
+		fallback.set_corner_radius_all(16)
+		fallback.content_margin_left = pad_h
+		fallback.content_margin_right = pad_h
+		fallback.content_margin_top = pad_v
+		fallback.content_margin_bottom = pad_v
+		return fallback
+	var sb := StyleBoxTexture.new()
+	sb.texture = tex
+	sb.texture_margin_left = float(slice_h)
+	sb.texture_margin_right = float(slice_h)
+	sb.texture_margin_top = float(slice_v)
+	sb.texture_margin_bottom = float(slice_v)
+	sb.content_margin_left = float(pad_h)
+	sb.content_margin_right = float(pad_h)
+	sb.content_margin_top = float(pad_v)
+	sb.content_margin_bottom = float(pad_v)
+	sb.modulate_color = modulate_col
+	return sb
+
 func _make_card_style(
 	bg: Color,
 	border: Color,
@@ -356,65 +418,52 @@ func _make_card_style(
 	bottom_lip: int = 6,
 	pad_h: int = 14,
 	pad_v: int = 10,
-	with_shadow: bool = true
-) -> StyleBoxFlat:
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = bg
-	sb.border_color = border
-	sb.set_corner_radius_all(radius)
-	sb.border_width_left = border_w
-	sb.border_width_right = border_w
-	sb.border_width_top = border_w
-	sb.border_width_bottom = border_w + bottom_lip
-	sb.content_margin_left = pad_h
-	sb.content_margin_right = pad_h
-	sb.content_margin_top = pad_v
-	sb.content_margin_bottom = pad_v
-	sb.anti_aliasing = true
-	sb.anti_aliasing_size = 1.0
-	if with_shadow:
-		sb.shadow_color = PALETTE.card_shadow
-		sb.shadow_size = 5
-		sb.shadow_offset = Vector2(0, 3)
-	return sb
+	_with_shadow: bool = true
+) -> StyleBox:
+	var is_compact := (radius <= 16 and bottom_lip <= 4)
+	var key := _pick_chatgpt_container_key(bg, is_compact)
+	var sh := 14 if is_compact else 24
+	var sv := 11 if is_compact else 18
+	var mod := Color(1.0, 1.0, 1.0, bg.a)
+	if border == Color("#A99F90"):
+		mod = Color(0.82, 0.80, 0.76, 0.92)
+	return _make_9slice_style(key, sh, sv, pad_h, pad_v, mod)
 
 func _make_recessed_style(
-	bg: Color = PALETTE.well_bg,
-	border: Color = PALETTE.well_border,
+	_bg: Color = PALETTE.well_bg,
+	_border: Color = PALETTE.well_border,
 	radius: int = 16,
 	pad_h: int = 12,
 	pad_v: int = 6
-) -> StyleBoxFlat:
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = bg
-	sb.border_color = border
-	sb.set_corner_radius_all(radius)
-	sb.border_width_left = 2
-	sb.border_width_right = 2
-	sb.border_width_top = 4
-	sb.border_width_bottom = 2
-	sb.content_margin_left = pad_h
-	sb.content_margin_right = pad_h
-	sb.content_margin_top = pad_v
-	sb.content_margin_bottom = pad_v
-	sb.anti_aliasing = true
-	return sb
+) -> StyleBox:
+	var is_compact := (radius <= 15)
+	var key := "panel_recessed_well_sm" if is_compact else "panel_recessed_well"
+	var sh := 16 if is_compact else 24
+	var sv := 12 if is_compact else 18
+	return _make_9slice_style(key, sh, sv, pad_h, pad_v, Color.WHITE)
 
 func _style_tactile_button(
 	btn: Button,
 	face_col: Color,
 	border_col: Color,
-	lip_col: Color,
+	_lip_col: Color,
 	text_col: Color = PALETTE.text_main,
 	radius: int = 18,
 	bevel: int = 6,
 	pad_h: int = 12,
 	pad_v: int = 6
 ) -> void:
-	var normal_sb := _make_card_style(face_col, border_col.lerp(lip_col, 0.35), radius, 3, bevel, pad_h, pad_v, true)
-	var hover_sb := _make_card_style(face_col.lightened(0.06), border_col, radius, 3, bevel, pad_h, pad_v, true)
-	var pressed_sb := _make_card_style(face_col.darkened(0.05), border_col, radius, 3, maxi(2, bevel - 3), pad_h, pad_v, false)
-	var disabled_sb := _make_card_style(Color("#DCD5C8"), Color("#A99F90"), radius, 2, 3, pad_h, pad_v, false)
+	var is_compact := (radius <= 15 or bevel <= 4)
+	var key := _pick_chatgpt_container_key(face_col, is_compact)
+	var sh := 14 if is_compact else 22
+	var sv := 11 if is_compact else 18
+
+	var normal_sb := _make_9slice_style(key, sh, sv, pad_h, pad_v, Color.WHITE)
+	var hover_sb := _make_9slice_style(key, sh, sv, pad_h, pad_v, Color(1.06, 1.06, 1.06, 1.0))
+	var pressed_sb := _make_9slice_style(key, sh, sv, pad_h, pad_v, Color(0.92, 0.90, 0.88, 1.0))
+	var disabled_sb := _make_9slice_style("panel_cream_card_sm" if is_compact else "panel_cream_card", sh, sv, pad_h, pad_v, Color(0.80, 0.78, 0.74, 0.85))
+	if border_col == Color("#A99F90"):
+		normal_sb = disabled_sb
 
 	btn.add_theme_stylebox_override("normal", normal_sb)
 	btn.add_theme_stylebox_override("hover", hover_sb)
@@ -424,7 +473,7 @@ func _style_tactile_button(
 	btn.add_theme_color_override("font_color", text_col)
 	btn.add_theme_color_override("font_hover_color", text_col)
 	btn.add_theme_color_override("font_pressed_color", text_col)
-	btn.add_theme_color_override("font_disabled_color", Color("#8E8579"))
+	btn.add_theme_color_override("font_disabled_color", Color("#7E7468"))
 	if _font_extrabold != null:
 		btn.add_theme_font_override("font", _font_extrabold)
 
@@ -996,10 +1045,14 @@ func _build_game_screen() -> void:
 	)
 	top_row.add_child(back_btn)
 
-	# Level Badge Pill (#F7D48A / #C18D45)
+	# Level Badge Ribbon
 	var lvl_badge := PanelContainer.new()
 	lvl_badge.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	lvl_badge.add_theme_stylebox_override("panel", _make_card_style(Color("#F7D48A"), Color("#C18D45"), 14, 2, 3, 12, 4, false))
+	var ribbon_style := _make_9slice_style("ribbon_gold", 32, 10, 20, 6)
+	if ribbon_style != null:
+		lvl_badge.add_theme_stylebox_override("panel", ribbon_style)
+	else:
+		lvl_badge.add_theme_stylebox_override("panel", _make_card_style(Color("#F7D48A"), Color("#C18D45"), 14, 2, 3, 12, 4, false))
 	top_row.add_child(lvl_badge)
 
 	_level_title_label = _make_label("Bölüm 1  •  5×5 Kolay", 17, Color("#704A27"), true, 1, Color("#FFF4DC"), 1)
@@ -1142,7 +1195,11 @@ func _build_game_screen() -> void:
 	# 4. Wooden Bakery Tray Board Section
 	var board_card := PanelContainer.new()
 	board_card.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	board_card.add_theme_stylebox_override("panel", _make_card_style(PALETTE.card_face, PALETTE.card_border, 22, 4, 8, 10, 10, true))
+	var wood_style := _make_9slice_style("panel_wood_frame", 24, 18, 12, 12)
+	if wood_style != null:
+		board_card.add_theme_stylebox_override("panel", wood_style)
+	else:
+		board_card.add_theme_stylebox_override("panel", _make_card_style(PALETTE.card_face, PALETTE.card_border, 22, 4, 8, 10, 10, true))
 	vbox.add_child(board_card)
 	_game_anim_cards.append(board_card)
 
@@ -1570,7 +1627,11 @@ func _show_ad_modal(ad_title: String, ad_subtitle: String, on_complete: Callable
 
 	var ad_card := PanelContainer.new()
 	ad_card.custom_minimum_size = Vector2(0, 154)
-	ad_card.add_theme_stylebox_override("panel", _make_card_style(Color("#F7D48A"), Color("#C18D45"), 18, 3, 5, 16, 14, false))
+	var ad_wood_style := _make_9slice_style("panel_wood_frame", 24, 18, 16, 14)
+	if ad_wood_style != null:
+		ad_card.add_theme_stylebox_override("panel", ad_wood_style)
+	else:
+		ad_card.add_theme_stylebox_override("panel", _make_card_style(Color("#F7D48A"), Color("#C18D45"), 18, 3, 5, 16, 14, false))
 	vbox.add_child(ad_card)
 
 	var ad_vb := VBoxContainer.new()
