@@ -52,6 +52,7 @@ var highlight_cells: Array[Vector2i] = []
 var draft_mode: bool = false
 var _draft_snapshot: Dictionary = {}
 var _undo_stack: Array[Dictionary] = []
+var _solved_emitted: bool = false
 
 var _is_dragging: bool = false
 var _drag_mode: int = -1
@@ -145,6 +146,7 @@ func setup_level(level_data: Dictionary) -> void:
 	_undo_stack.clear()
 	draft_mode = false
 	_draft_snapshot.clear()
+	_solved_emitted = false
 
 	for r in range(grid_size):
 		var st_row := []
@@ -518,8 +520,10 @@ func _recheck_conflicts_and_win() -> void:
 	_emit_counts()
 
 	if bunnies.size() == grid_size and conflict_cells.is_empty():
-		SoundManager.play("win")
-		board_solved.emit()
+		if not _solved_emitted:
+			_solved_emitted = true
+			SoundManager.play("win")
+			board_solved.emit()
 
 func _emit_counts() -> void:
 	var count := 0
@@ -544,12 +548,18 @@ func _restore_snapshot(snap: Dictionary) -> void:
 	queue_redraw()
 
 func _push_undo() -> void:
+	# Draft mode records a single pre-draft snapshot instead of one per tentative mark.
+	if draft_mode:
+		return
 	_undo_stack.append(_capture_snapshot())
 	if _undo_stack.size() > 60:
 		_undo_stack.pop_front()
 	undo_availability_changed.emit(true)
 
 func undo_move() -> void:
+	if draft_mode:
+		cancel_draft()
+		return
 	if _undo_stack.is_empty():
 		return
 	var snap: Dictionary = _undo_stack.pop_back()
@@ -576,6 +586,7 @@ func clear_board() -> void:
 
 func toggle_draft_mode() -> void:
 	if not draft_mode:
+		_push_undo()
 		draft_mode = true
 		_draft_snapshot = _capture_snapshot()
 		SoundManager.play("click")
@@ -592,6 +603,7 @@ func apply_draft() -> void:
 			if cell_source[r][c] == SOURCE_DRAFT:
 				cell_source[r][c] = SOURCE_MANUAL
 	_draft_snapshot.clear()
+	_recheck_conflicts_and_win()
 	SoundManager.play("bunny_place")
 	draft_state_changed.emit(false)
 	queue_redraw()
@@ -603,6 +615,11 @@ func cancel_draft() -> void:
 	if not _draft_snapshot.is_empty():
 		_restore_snapshot(_draft_snapshot)
 	_draft_snapshot.clear()
+	# The pre-draft snapshot was pushed when draft mode opened; cancel already
+	# reverted to it, so drop it instead of leaving a stale draft state on the stack.
+	if not _undo_stack.is_empty():
+		_undo_stack.pop_back()
+	undo_availability_changed.emit(not _undo_stack.is_empty())
 	SoundManager.play("click")
 	draft_state_changed.emit(false)
 	queue_redraw()
@@ -660,6 +677,11 @@ func apply_carrot_booster() -> Dictionary:
 			best_pos = cand
 
 	highlight_cells = [best_pos]
+	# A booster must never count as a mistake: any bunny that conflicts with the
+	# revealed solution cell is by definition misplaced, so clear it first.
+	for conflict_pos in _find_conflicts_for_cell(best_pos):
+		if not prefill_set.has(conflict_pos):
+			_remove_bunny_at(conflict_pos)
 	_place_bunny_at(best_pos, SOURCE_HINT)
 	SoundManager.play("carrot")
 	_recheck_conflicts_and_win()
