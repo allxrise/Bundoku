@@ -5,3 +5,19 @@
 *.tmp
 *.log
 .DS_Store
+# Godot Android Gradle build template artifacts
+/android/build/libs/
+/android/build/.gradle/
+/android/build/build/
+/android/build/.cxx/
+/android/build/local.properties
+
+# Generated at export time (Godot re-creates these)
+/android/build/src/main/assets/
+/android/build/src/debug/
+/android/build/src/release/
+
+# AdMob addon download cache (the plugin re-fetches binaries on demand)
+/addons/admob/downloads/
+/addons/admob/ios/bin/
+

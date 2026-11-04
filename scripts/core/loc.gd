@@ -1618,7 +1618,7 @@ const DATA := {
 		"player_default_name": "Thỏ Bông",
 		"quotes": [
 			"Mẹo: Vuốt ngón tay qua các ô trống để đánh dấu X thật nhanh!",
-			"Nhớ nhé: Các chú thỏ không được chạm nhau kể cả по đường chéo!",
+			"Nhớ nhé: Các chú thỏ không được chạm nhau kể cả trên đường chéo!",
 			"Hãy tìm vùng màu chỉ còn đúng 1 ô trống để đặt thỏ ngay!",
 			"Dùng chế độ Nháp (Bút chì) để thử nước đi an toàn!",
 			"Nếu mọi ô trống của 1 màu nằm trên 1 hàng, phần còn lại của hàng là X!",

@@ -435,6 +435,15 @@ func _handle_drag_over_cell(cell: Vector2i) -> void:
 		SoundManager.play("unmark_x", -2.0)
 		queue_redraw()
 
+func _telemetry_source_name(src: int) -> String:
+	match src:
+		SOURCE_MANUAL: return "manual"
+		SOURCE_AUTO: return "auto"
+		SOURCE_PREFILL: return "prefill"
+		SOURCE_DRAFT: return "draft"
+		SOURCE_HINT: return "hint"
+	return "unknown"
+
 func _place_bunny_at(pos: Vector2i, src: int) -> void:
 	cell_state[pos.x][pos.y] = STATE_BUNNY
 	cell_source[pos.x][pos.y] = src
@@ -444,12 +453,23 @@ func _place_bunny_at(pos: Vector2i, src: int) -> void:
 
 	var conflicts := _find_conflicts_for_cell(pos)
 	if not conflicts.is_empty():
-		SoundManager.play("error")
-		mistake_made.emit(pos, Loc.t("mistake_msg"))
+		# Draft mode is the "try ideas safely" mode: a conflicting draft bunny is
+		# still highlighted by _recheck_conflicts_and_win(), but it must not cost a
+		# life or a star.
+		if src != SOURCE_DRAFT:
+			SoundManager.play("error")
+			mistake_made.emit(pos, Loc.t("mistake_msg"))
 	elif GameState.auto_cross_enabled:
 		var cross_src := SOURCE_DRAFT if draft_mode else SOURCE_AUTO
 		_apply_auto_cross_for_bunny(pos, cross_src)
 	_emit_counts()
+	if src != SOURCE_PREFILL:
+		Telemetry.track("bunny_placed", {
+			"row": pos.x + 1,
+			"col": pos.y + 1,
+			"source": _telemetry_source_name(src),
+			"draft": int(draft_mode),
+		})
 
 func _remove_bunny_at(pos: Vector2i) -> void:
 	cell_state[pos.x][pos.y] = STATE_EMPTY
@@ -462,6 +482,7 @@ func _remove_bunny_at(pos: Vector2i) -> void:
 				if owners.is_empty() and cell_state[r][c] == STATE_CROSS and (cell_source[r][c] == SOURCE_AUTO or cell_source[r][c] == SOURCE_DRAFT):
 					cell_state[r][c] = STATE_EMPTY
 	_emit_counts()
+	Telemetry.track("bunny_removed", {"row": pos.x + 1, "col": pos.y + 1})
 
 func _apply_auto_cross_for_bunny(bunny_pos: Vector2i, cross_src: int) -> void:
 	var reg: int = int(region_map[bunny_pos.x][bunny_pos.y])
@@ -566,6 +587,7 @@ func undo_move() -> void:
 	_restore_snapshot(snap)
 	SoundManager.play("click")
 	undo_availability_changed.emit(not _undo_stack.is_empty())
+	Telemetry.track("undo", {"level": Telemetry.level_context, "remaining": _undo_stack.size()})
 
 func clear_board() -> void:
 	_push_undo()
@@ -583,6 +605,7 @@ func clear_board() -> void:
 	_recheck_conflicts_and_win()
 	SoundManager.play("clear")
 	queue_redraw()
+	Telemetry.track("board_clear", {"level": Telemetry.level_context})
 
 func toggle_draft_mode() -> void:
 	if not draft_mode:
@@ -598,15 +621,18 @@ func apply_draft() -> void:
 	if not draft_mode:
 		return
 	draft_mode = false
+	var draft_marks := 0
 	for r in range(grid_size):
 		for c in range(grid_size):
 			if cell_source[r][c] == SOURCE_DRAFT:
 				cell_source[r][c] = SOURCE_MANUAL
+				draft_marks += 1
 	_draft_snapshot.clear()
 	_recheck_conflicts_and_win()
 	SoundManager.play("bunny_place")
 	draft_state_changed.emit(false)
 	queue_redraw()
+	Telemetry.track("draft_applied", {"level": Telemetry.level_context, "marks": draft_marks})
 
 func cancel_draft() -> void:
 	if not draft_mode:
@@ -623,6 +649,7 @@ func cancel_draft() -> void:
 	SoundManager.play("click")
 	draft_state_changed.emit(false)
 	queue_redraw()
+	Telemetry.track("draft_cancelled", {"level": Telemetry.level_context})
 
 func request_and_apply_hint() -> Dictionary:
 	var hint := HintSolver.compute_hint(grid_size, region_map, solution_set, cell_state)

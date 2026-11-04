@@ -1,0 +1,164 @@
+[
+  {
+    "name": "schema",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Row schema version emitted by Telemetry.SCHEMA_VERSION (currently 1)."
+  },
+  {
+    "name": "event_name",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Snake_case event name, sanitized to [a-z0-9_]{1,40}."
+  },
+  {
+    "name": "event_ts_us",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Event time, microseconds since the Unix epoch (UTC)."
+  },
+  {
+    "name": "event_date",
+    "type": "DATE",
+    "mode": "NULLABLE",
+    "description": "UTC calendar date derived from event_ts_us by tools/bq_load.py. Partition column."
+  },
+  {
+    "name": "user_pseudo_id",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Random per-install identifier (16 random bytes, hex). Not a user id."
+  },
+  {
+    "name": "session_id",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Random identifier for one app session."
+  },
+  {
+    "name": "session_number",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Lifetime session counter for this install, starting at 1."
+  },
+  {
+    "name": "screen",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Screen context at event time (boot, home, game, result, ad, league, language, out_of_lives)."
+  },
+  {
+    "name": "level",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Level context at event time, 1-based; 0 when no level is active."
+  },
+  {
+    "name": "params",
+    "type": "JSON",
+    "mode": "NULLABLE",
+    "description": "Event-specific parameters as a JSON object. Values are int, float or string; booleans are stored as 0/1."
+  },
+  {
+    "name": "user_properties",
+    "type": "JSON",
+    "mode": "NULLABLE",
+    "description": "Latest GA4-style user properties repeated on every row: max_level, trophies, hints, carrots, no_ads, language."
+  },
+  {
+    "name": "app_version",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "application/config/version at event time."
+  },
+  {
+    "name": "engine_version",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Godot engine version string."
+  },
+  {
+    "name": "platform",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "OS.get_name() (Android, iOS, Linux, Windows, macOS)."
+  },
+  {
+    "name": "os_version",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Operating system version string."
+  },
+  {
+    "name": "device_model",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Hardware model name as reported by the OS."
+  },
+  {
+    "name": "device_brand",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Processor name reported by the OS (approximates device brand)."
+  },
+  {
+    "name": "cpu_count",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Logical processor count."
+  },
+  {
+    "name": "gpu_vendor",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Rendering adapter vendor."
+  },
+  {
+    "name": "gpu_name",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Rendering adapter name."
+  },
+  {
+    "name": "screen_w",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Screen width in pixels."
+  },
+  {
+    "name": "screen_h",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Screen height in pixels."
+  },
+  {
+    "name": "locale",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "OS locale, e.g. tr_TR."
+  },
+  {
+    "name": "language",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "In-game language code."
+  },
+  {
+    "name": "is_mobile",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "1 when the mobile feature tag is present, else 0."
+  },
+  {
+    "name": "is_debug",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "1 for a debug build, else 0."
+  },
+  {
+    "name": "region_eea",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "1 when the OS locale country is in the EEA/UK/CH list, else 0."
+  }
+]

@@ -26,6 +26,8 @@ var _home_margin: MarginContainer
 var _game_margin: MarginContainer
 var _modal_layer: Control
 var _damage_flash: ColorRect
+# Bottom space reserved for the AdMob banner, in viewport pixels.
+var _banner_inset_px: int = 0
 
 # Staggered animation card groups
 var _home_anim_cards: Array[Control] = []
@@ -38,7 +40,6 @@ var _home_hints_label: Label
 var _home_carrots_label: Label
 var _home_play_btn_label: Label
 var _home_speech_label: Label
-var _home_sound_label: Label
 var _home_sound_icon: TextureRect
 var _level_grid: GridContainer
 
@@ -56,7 +57,6 @@ var _auto_x_btn: Button
 var _auto_x_lbl: Label
 var _pattern_btn: Button
 var _pattern_lbl: Label
-var _game_sound_lbl: Label
 var _game_sound_icon: TextureRect
 var _board_view: BoardView
 var _toast_panel: PanelContainer
@@ -88,6 +88,11 @@ var _ad_close_btn: Button = null
 var _ad_close_lbl: Label = null
 var _ad_progress_bar: ProgressBar = null
 var _ad_on_complete: Callable = Callable()
+
+# Real (AdMob) ad offer state. The simulated modal keeps using _ad_on_complete.
+var _pending_ad_placement: String = ""
+var _pending_ad_on_complete: Callable = Callable()
+var _pending_ad_reward_earned: bool = false
 
 # Cozy Kawaii Woodland / Bunny Bakery Palette
 const PALETTE := {
@@ -124,14 +129,6 @@ const PALETTE := {
 	"slot_filled": Color("#F9BB62"),
 	"slot_filled_border": Color("#C18D45")
 }
-
-const BUNNY_QUOTES := [
-	"Her satırda, her sütunda ve her renkli bölgede tam 1 tavşan olmalı!",
-	"Unutma: İki tavşan çaprazdan bile birbirine değemez!",
-	"İpucu: Boş hücrelerde parmağını sürükleyerek hızlıca X koyabilirsin!",
-	"Bir hücreye çift dokunarak doğrudan tavşan yerleştirebilirsin!",
-	"Zorlandığında Taslak (Kalem) modunu açıp deneme yapabilirsin!"
-]
 
 const UI_TEXTURE_FILES := [
 	"common_big_star",
@@ -183,6 +180,13 @@ func _ready() -> void:
 	get_tree().create_timer(0.15).timeout.connect(_apply_safe_area_margins)
 	GameState.stats_changed.connect(_refresh_all_ui)
 	_show_home_screen()
+	# The manager signal carries (format, placement, duration); the controller only
+	# needs placement + duration and derives the format from the placement.
+	Ads.ad_closed.connect(_on_ads_ad_closed_signal)
+	Ads.ad_rewarded.connect(_on_ads_ad_rewarded)
+	Ads.consent_finished.connect(_on_ads_consent_finished)
+	Ads.banner_loaded.connect(_on_banner_loaded)
+	Ads.start()
 
 func _apply_safe_area_margins() -> void:
 	var vp_size: Vector2 = get_viewport_rect().size
@@ -193,47 +197,70 @@ func _apply_safe_area_margins() -> void:
 	var scale_y: float = vp_size.y / float(maxi(1, win_size.y))
 	var scale_x: float = vp_size.x / float(maxi(1, win_size.x))
 
-	var safe_top_px: float = 0.0
-	var safe_bottom_px: float = 0.0
-	var safe_left_px: float = 0.0
-	var safe_right_px: float = 0.0
-
-	var safe_rect: Rect2i = DisplayServer.get_display_safe_area()
-	if safe_rect.size.x > 0 and safe_rect.size.y > 0 and win_size.x > 0 and win_size.y > 0:
-		safe_top_px = maxf(safe_top_px, float(maxi(0, safe_rect.position.y)))
-		safe_bottom_px = maxf(safe_bottom_px, float(maxi(0, win_size.y - (safe_rect.position.y + safe_rect.size.y))))
-		safe_left_px = maxf(safe_left_px, float(maxi(0, safe_rect.position.x)))
-		safe_right_px = maxf(safe_right_px, float(maxi(0, win_size.x - (safe_rect.position.x + safe_rect.size.x))))
-
-	var cutouts: Array[Rect2] = DisplayServer.get_display_cutouts()
-	for cutout in cutouts:
-		if win_size.y > 0 and cutout.position.y < float(win_size.y) * 0.25:
-			safe_top_px = maxf(safe_top_px, cutout.position.y + cutout.size.y)
-		elif win_size.y > 0 and (cutout.position.y + cutout.size.y) > float(win_size.y) * 0.75:
-			safe_bottom_px = maxf(safe_bottom_px, float(win_size.y) - cutout.position.y)
-
-	var top_inset_vp: int = int(ceil(safe_top_px * scale_y))
-	var bottom_inset_vp: int = int(ceil(safe_bottom_px * scale_y))
-	var left_inset_vp: int = int(ceil(safe_left_px * scale_x))
-	var right_inset_vp: int = int(ceil(safe_right_px * scale_x))
-
 	var is_mobile: bool = OS.has_feature("android") or OS.has_feature("ios") or OS.has_feature("mobile")
+	var top_inset_vp: int = 0
+	var bottom_inset_vp: int = 0
+	var left_inset_vp: int = 0
+	var right_inset_vp: int = 0
+
+	# Display-safe-area and cutout rects are display-relative. Mapping them onto the
+	# window only makes sense when the window covers the display (mobile fullscreen);
+	# on desktop they describe the taskbar/menu bar and would fake insets that clip
+	# the 540px-wide layout.
 	if is_mobile:
+		var safe_top_px: float = 0.0
+		var safe_bottom_px: float = 0.0
+		var safe_left_px: float = 0.0
+		var safe_right_px: float = 0.0
+
+		var safe_rect: Rect2i = DisplayServer.get_display_safe_area()
+		if safe_rect.size.x > 0 and safe_rect.size.y > 0 and win_size.x > 0 and win_size.y > 0:
+			safe_top_px = maxf(safe_top_px, float(maxi(0, safe_rect.position.y)))
+			safe_bottom_px = maxf(safe_bottom_px, float(maxi(0, win_size.y - (safe_rect.position.y + safe_rect.size.y))))
+			safe_left_px = maxf(safe_left_px, float(maxi(0, safe_rect.position.x)))
+			safe_right_px = maxf(safe_right_px, float(maxi(0, win_size.x - (safe_rect.position.x + safe_rect.size.x))))
+
+		var cutouts: Array[Rect2] = DisplayServer.get_display_cutouts()
+		for cutout in cutouts:
+			if win_size.y > 0 and cutout.position.y < float(win_size.y) * 0.25:
+				safe_top_px = maxf(safe_top_px, cutout.position.y + cutout.size.y)
+			elif win_size.y > 0 and (cutout.position.y + cutout.size.y) > float(win_size.y) * 0.75:
+				safe_bottom_px = maxf(safe_bottom_px, float(win_size.y) - cutout.position.y)
+
+		top_inset_vp = int(ceil(safe_top_px * scale_y))
+		bottom_inset_vp = int(ceil(safe_bottom_px * scale_y))
+		left_inset_vp = int(ceil(safe_left_px * scale_x))
+		right_inset_vp = int(ceil(safe_right_px * scale_x))
+
 		# Ensure a generous top safe margin for notch / punch-hole cameras and bottom margin for gesture bars
 		top_inset_vp = maxi(top_inset_vp, 88)
 		bottom_inset_vp = maxi(bottom_inset_vp, 28)
+
+	# While a banner occupies the bottom strip it already covers the gesture /
+	# safe-area region, so do not stack base + safe padding on top of it.
+	var home_bottom := 16 + bottom_inset_vp
+	var game_bottom := 14 + bottom_inset_vp
+	if _banner_inset_px > 0:
+		home_bottom = _banner_inset_px + 8
+		game_bottom = _banner_inset_px + 6
 
 	if _home_margin != null:
 		_home_margin.add_theme_constant_override("margin_left", 18 + left_inset_vp)
 		_home_margin.add_theme_constant_override("margin_right", 18 + right_inset_vp)
 		_home_margin.add_theme_constant_override("margin_top", 14 + top_inset_vp)
-		_home_margin.add_theme_constant_override("margin_bottom", 16 + bottom_inset_vp)
+		_home_margin.add_theme_constant_override("margin_bottom", home_bottom)
 
 	if _game_margin != null:
 		_game_margin.add_theme_constant_override("margin_left", 14 + left_inset_vp)
 		_game_margin.add_theme_constant_override("margin_right", 14 + right_inset_vp)
 		_game_margin.add_theme_constant_override("margin_top", 12 + top_inset_vp)
-		_game_margin.add_theme_constant_override("margin_bottom", 14 + bottom_inset_vp)
+		_game_margin.add_theme_constant_override("margin_bottom", game_bottom)
+
+## Ads reports the banner height in viewport pixels; reserve exactly that much at
+## the bottom so the AdView never covers the home or game layout.
+func _on_banner_loaded(height_px: int) -> void:
+	_banner_inset_px = maxi(0, height_px)
+	_apply_safe_area_margins()
 
 func _load_assets() -> void:
 	_bg_tex = _load_image_tex("res://assets/chatgpt_ui/bundoku_bg_meadow.png")
@@ -347,7 +374,8 @@ func _load_image_tex(path: String) -> Texture2D:
 	return null
 
 func _process(delta: float) -> void:
-	if _is_playing:
+	# Ad modals must not eat into the level timer: star thresholds use elapsed_sec.
+	if _is_playing and not _ad_is_active:
 		_timer_accum += delta
 		if _timer_accum >= 1.0:
 			_timer_accum -= 1.0
@@ -362,8 +390,8 @@ func _process(delta: float) -> void:
 			if _ad_close_btn != null and _ad_close_btn.disabled:
 				_ad_close_btn.disabled = false
 				_style_tactile_button(_ad_close_btn, PALETTE.carrot_face, PALETTE.carrot_border, PALETTE.carrot_lip, PALETTE.text_light, 18, 6)
-			if _ad_close_lbl != null:
-				_ad_close_lbl.text = Loc.t("ad_continue")
+				if _ad_close_lbl != null:
+					_ad_close_lbl.text = Loc.t("ad_continue")
 		else:
 			if _ad_close_lbl != null:
 				_ad_close_lbl.text = Loc.t("ad_wait_sec") % int(ceil(_ad_countdown_sec))
@@ -558,6 +586,9 @@ func _attach_button_anim(btn: Button) -> void:
 	)
 
 func _animate_cards_enter(cards: Array[Control]) -> void:
+	# Containers report size 0 until the first layout pass; pivoting before that
+	# animates from the top-left corner instead of the card center.
+	await get_tree().process_frame
 	for i in range(cards.size()):
 		var c := cards[i]
 		if not is_instance_valid(c):
@@ -572,6 +603,7 @@ func _animate_cards_enter(cards: Array[Control]) -> void:
 		tw.tween_property(c, "scale", Vector2.ONE, 0.30).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 func _animate_slot_pop(slot: Control) -> void:
+	await get_tree().process_frame
 	if not is_instance_valid(slot):
 		return
 	slot.pivot_offset = slot.size * 0.5
@@ -729,6 +761,7 @@ func _build_home_screen() -> void:
 	_home_carrots_label = carrot_pair[1]
 
 	var snd_btn := Button.new()
+	snd_btn.set_meta("telemetry_id", "sound_toggle")
 	snd_btn.custom_minimum_size = Vector2(46, 42)
 	_style_tactile_button(snd_btn, PALETTE.cream_face, PALETTE.card_border, PALETTE.cream_lip, PALETTE.text_main, 16, 4, 6, 4)
 	var snd_hb := CenterContainer.new()
@@ -778,6 +811,7 @@ func _build_home_screen() -> void:
 	_home_anim_cards.append(action_hbox)
 
 	var play_btn := Button.new()
+	play_btn.set_meta("telemetry_id", "play")
 	play_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	play_btn.custom_minimum_size = Vector2(0, 62)
 	_style_tactile_button(play_btn, PALETTE.carrot_face, PALETTE.carrot_border, PALETTE.carrot_lip, PALETTE.text_light, 20, 7, 14, 8)
@@ -801,6 +835,7 @@ func _build_home_screen() -> void:
 	action_hbox.add_child(play_btn)
 
 	var daily_btn := Button.new()
+	daily_btn.set_meta("telemetry_id", "daily")
 	daily_btn.custom_minimum_size = Vector2(118, 62)
 	_style_tactile_button(daily_btn, PALETTE.berry_face, PALETTE.berry_border, PALETTE.berry_lip, Color.WHITE, 20, 7, 10, 8)
 	var daily_hb := HBoxContainer.new()
@@ -817,11 +852,14 @@ func _build_home_screen() -> void:
 	daily_btn.pressed.connect(func():
 		SoundManager.play("click")
 		var daily_idx: int = (int(Time.get_date_dict_from_system().get("day", 1)) * 7) % maxi(1, GameState.get_level_count())
-		start_level(daily_idx)
+		# Never jump ahead of unlocked progress: the level grid would show it locked
+		# and completing it used to unlock everything up to it.
+		start_level(mini(daily_idx, GameState.unlocked_level_index), "daily")
 	)
 	action_hbox.add_child(daily_btn)
 
 	var league_btn := Button.new()
+	league_btn.set_meta("telemetry_id", "league")
 	league_btn.custom_minimum_size = Vector2(96, 62)
 	_style_tactile_button(league_btn, Color("#FCE6A9"), Color("#C99B4F"), Color("#D4B98F"), PALETTE.text_main, 20, 7, 10, 8)
 	var lg_hb := HBoxContainer.new()
@@ -865,6 +903,7 @@ func _build_home_screen() -> void:
 	lvl_hdr_hbox.add_child(lvl_hdr)
 
 	var lang_btn := Button.new()
+	lang_btn.set_meta("telemetry_id", "language")
 	lang_btn.text = "🌐 " + Loc.get_short_code()
 	lang_btn.custom_minimum_size = Vector2(74, 34)
 	_style_tactile_button(lang_btn, PALETTE.cream_face, PALETTE.card_border, PALETTE.cream_lip, PALETTE.text_main, 12, 3, 10, 2)
@@ -899,6 +938,7 @@ func _build_home_screen() -> void:
 
 func _populate_level_grid() -> void:
 	for child in _level_grid.get_children():
+		_level_grid.remove_child(child)
 		child.queue_free()
 
 	var total := GameState.get_level_count()
@@ -914,6 +954,7 @@ func _populate_level_grid() -> void:
 		var stars: int = int(comp_info.get("stars", 0))
 
 		var btn := Button.new()
+		btn.set_meta("telemetry_id", "level_%d" % (idx + 1))
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		btn.custom_minimum_size = Vector2(105, 72)
 		btn.mouse_filter = Control.MOUSE_FILTER_PASS
@@ -1164,6 +1205,7 @@ func _build_game_screen() -> void:
 	timer_hbox.add_child(_timer_label)
 
 	var game_snd_btn := Button.new()
+	game_snd_btn.set_meta("telemetry_id", "sound_toggle")
 	game_snd_btn.custom_minimum_size = Vector2(44, 40)
 	_style_tactile_button(game_snd_btn, Color("#FFF6E6"), PALETTE.card_border, PALETTE.card_lip, PALETTE.text_main, 14, 4, 4, 4)
 	var gs_center := CenterContainer.new()
@@ -1203,6 +1245,7 @@ func _build_game_screen() -> void:
 
 	# Auto-X Toggle
 	_auto_x_btn = Button.new()
+	_auto_x_btn.set_meta("telemetry_id", "auto_x_toggle")
 	_auto_x_btn.custom_minimum_size = Vector2(120, 34)
 	var ax_hb := HBoxContainer.new()
 	ax_hb.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -1220,11 +1263,13 @@ func _build_game_screen() -> void:
 		GameState.save_game()
 		SoundManager.play("click")
 		_refresh_settings_buttons()
+		Telemetry.track("setting_changed", {"setting": "auto_cross", "value": int(GameState.auto_cross_enabled)})
 	)
 	sub_row.add_child(_auto_x_btn)
 
 	# Pattern Mode Toggle
 	_pattern_btn = Button.new()
+	_pattern_btn.set_meta("telemetry_id", "pattern_toggle")
 	_pattern_btn.custom_minimum_size = Vector2(124, 34)
 	var pt_hb := HBoxContainer.new()
 	pt_hb.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -1243,6 +1288,7 @@ func _build_game_screen() -> void:
 		GameState.settings_changed.emit()
 		SoundManager.play("click")
 		_refresh_settings_buttons()
+		Telemetry.track("setting_changed", {"setting": "pattern", "value": int(GameState.pattern_mode_enabled)})
 	)
 	sub_row.add_child(_pattern_btn)
 
@@ -1370,11 +1416,13 @@ func _build_game_screen() -> void:
 
 	var undo_dict := _make_tool_button(_get_ui_tex("game_icon_undo"), Loc.t("tool_undo"), Color("#E6D7BC"), Color("#A98762"), Color("#CBAE83"), false)
 	_undo_btn = undo_dict["button"]
+	_undo_btn.set_meta("telemetry_id", "undo")
 	_undo_btn.pressed.connect(func(): _board_view.undo_move())
 	tools_hbox.add_child(_undo_btn)
 
 	var clear_dict := _make_tool_button(_get_ui_tex("icon_broom"), Loc.t("tool_clear"), Color("#F1C4BA"), Color("#C27B6D"), Color("#D88D80"), false, Color.WHITE)
 	var clear_btn: Button = clear_dict["button"]
+	clear_btn.set_meta("telemetry_id", "clear")
 	clear_btn.pressed.connect(func():
 		_toast_panel.visible = false
 		_board_view.clear_board()
@@ -1385,18 +1433,21 @@ func _build_game_screen() -> void:
 	_draft_btn = draft_dict["button"]
 	_draft_icon_rect = draft_dict["icon"]
 	_draft_caption_lbl = draft_dict["caption"]
+	_draft_btn.set_meta("telemetry_id", "draft")
 	_draft_btn.pressed.connect(func(): _board_view.toggle_draft_mode())
 	tools_hbox.add_child(_draft_btn)
 
 	var hint_dict := _make_tool_button(_get_ui_tex("game_icon_hint_lamp"), Loc.t("tool_hint"), Color("#F2E3A9"), Color("#C19C4C"), Color("#D3B36D"), true)
 	_hint_btn = hint_dict["button"]
 	_hint_badge_lbl = hint_dict["badge"]
+	_hint_btn.set_meta("telemetry_id", "hint")
 	_hint_btn.pressed.connect(_on_hint_pressed)
 	tools_hbox.add_child(_hint_btn)
 
 	var carrot_dict := _make_tool_button(_carrot_tex, Loc.t("tool_carrot"), Color("#F4D0AD"), Color("#C18D45"), Color("#D8A46F"), true)
 	_carrot_btn = carrot_dict["button"]
 	_carrot_badge_lbl = carrot_dict["badge"]
+	_carrot_btn.set_meta("telemetry_id", "carrot")
 	_carrot_btn.pressed.connect(_on_carrot_pressed)
 	tools_hbox.add_child(_carrot_btn)
 
@@ -1404,11 +1455,13 @@ func _build_game_screen() -> void:
 	_mode_btn = mode_dict["button"]
 	_mode_icon_rect = mode_dict["icon"]
 	_mode_caption_lbl = mode_dict["caption"]
+	_mode_btn.set_meta("telemetry_id", "mode_toggle")
 	_mode_btn.pressed.connect(func():
 		GameState.bunny_first_tap_mode = not GameState.bunny_first_tap_mode
 		GameState.save_game()
 		SoundManager.play("click")
 		_refresh_settings_buttons()
+		Telemetry.track("setting_changed", {"setting": "first_tap_mode", "value": int(GameState.bunny_first_tap_mode)})
 	)
 	tools_hbox.add_child(_mode_btn)
 
@@ -1420,40 +1473,62 @@ func _toggle_audio() -> void:
 	if new_state:
 		SoundManager.play("click")
 	_refresh_settings_buttons()
+	Telemetry.track("setting_changed", {"setting": "sound", "value": int(new_state)})
 
 func _show_home_screen() -> void:
+	if _is_playing and _game_screen.visible:
+		Telemetry.track("level_abandon", {
+			"level": _active_level_idx + 1,
+			"seconds": _elapsed_sec,
+			"mistakes": _mistakes,
+			"placed": _last_placed_count,
+		})
+	Telemetry.set_screen("home")
 	_is_playing = false
 	_ad_is_active = false
 	_apply_safe_area_margins()
 	_home_screen.visible = true
 	_game_screen.visible = false
-	_modal_layer.visible = false
+	_dismiss_modal()
 	var q := Loc.quotes()
 	_home_speech_label.text = str(q[randi() % q.size()])
 	_refresh_all_ui()
 	_populate_level_grid()
 	_animate_cards_enter(_home_anim_cards)
 
-func start_level(idx: int) -> void:
+func start_level(idx: int, source: String = "campaign") -> void:
 	_active_level_idx = clampi(idx, 0, GameState.get_level_count() - 1)
 	GameState.current_level_index = _active_level_idx
 	var lv := GameState.get_level(_active_level_idx)
 	var sz: int = int(lv.get("size", 5))
 	var raw_tier: String = str(lv.get("tier", "easy"))
 	var tier_tr: String = _tier_tr(raw_tier)
+	var prefill_arr: Array = lv.get("prefillPositions", [])
+	Telemetry.set_screen("game")
+	Telemetry.set_level_context(_active_level_idx + 1)
+	Telemetry.track("level_start", {
+		"level": _active_level_idx + 1,
+		"size": sz,
+		"tier": raw_tier,
+		"source": source,
+		"prefill": prefill_arr.size(),
+		"unlocked": GameState.unlocked_level_index + 1,
+	})
 
 	_lives = 3
 	_mistakes = 0
 	_elapsed_sec = 0
 	_timer_accum = 0.0
-	_last_placed_count = 0
+	# -1 forces the first bunny_count_changed from setup_level() to rebuild the slot
+	# row, even for levels without prefilled bunnies.
+	_last_placed_count = -1
 	_is_playing = true
 	_ad_is_active = false
 
 	_apply_safe_area_margins()
 	_home_screen.visible = false
 	_game_screen.visible = true
-	_modal_layer.visible = false
+	_dismiss_modal()
 	_toast_panel.visible = false
 
 	_level_title_label.text = Loc.t("level_header") % [_active_level_idx + 1, sz, sz, tier_tr]
@@ -1476,6 +1551,7 @@ func _rebuild_progress_slots(placed: int, total: int) -> void:
 	if _progress_slots_box == null:
 		return
 	for c in _progress_slots_box.get_children():
+		_progress_slots_box.remove_child(c)
 		c.queue_free()
 
 	var slot_px := clampf(290.0 / float(maxi(4, total)), 26.0, 36.0)
@@ -1514,10 +1590,6 @@ func _refresh_settings_buttons() -> void:
 		_home_sound_icon.texture = snd_tex
 	if _game_sound_icon != null and snd_tex != null:
 		_game_sound_icon.texture = snd_tex
-	if _home_sound_label != null:
-		_home_sound_label.text = "SES: AÇIK" if SoundManager.sound_enabled else "SES: KAPALI"
-	if _game_sound_lbl != null:
-		_game_sound_lbl.text = "SES: AÇIK" if SoundManager.sound_enabled else "SESSİZ"
 
 	if _auto_x_btn != null:
 		if _auto_x_lbl != null:
@@ -1589,6 +1661,10 @@ func _refresh_all_ui() -> void:
 	_refresh_settings_buttons()
 
 func _on_bunny_count_changed(placed: int, total: int) -> void:
+	# BoardView emits this twice per placement (place/remove + recheck); skip the
+	# duplicate so the slot row is rebuilt once.
+	if placed == _last_placed_count and _progress_slots_box != null and _progress_slots_box.get_child_count() == total:
+		return
 	_rebuild_progress_slots(placed, total)
 
 func _on_draft_state_changed(is_draft: bool) -> void:
@@ -1626,33 +1702,50 @@ func _on_mistake_made(_cell: Vector2i, reason: String) -> void:
 	if lost_idx >= 0 and lost_idx < _heart_icons.size():
 		_animate_heart_loss(_heart_icons[lost_idx])
 	_show_toast(Loc.t("mistake_title"), reason)
+	Telemetry.track("mistake", {
+		"level": _active_level_idx + 1,
+		"reason": reason,
+		"lives_left": _lives,
+		"mistakes_total": _mistakes,
+	})
 	if _lives <= 0:
 		_is_playing = false
 		_show_out_of_lives_modal()
 
 func _on_hint_pressed() -> void:
 	if GameState.hints_count <= 0:
-		_show_ad_modal(Loc.t("free_hint_title"), Loc.t("free_hint_sub"), func():
+		var on_hint_ad: Callable = func():
 			GameState.add_free_boosters(2, 0)
 			_show_toast(Loc.t("added_hint_title"), Loc.t("added_hint_msg"))
-		)
+		_show_ad_modal(Loc.t("free_hint_title"), Loc.t("free_hint_sub"), on_hint_ad, "free_hint")
 		return
 	var res := _board_view.request_and_apply_hint()
 	if not res.is_empty():
 		GameState.use_hint()
 		_show_toast(str(res.get("title", Loc.t("tool_hint"))), str(res.get("message", "")))
+		Telemetry.track("booster_used", {
+			"booster": "hint",
+			"hint_type": str(res.get("type", "")),
+			"hints_left": GameState.hints_count,
+			"level": _active_level_idx + 1,
+		})
 
 func _on_carrot_pressed() -> void:
 	if GameState.carrots_count <= 0:
-		_show_ad_modal(Loc.t("free_carrot_title"), Loc.t("free_carrot_sub"), func():
+		var on_carrot_ad: Callable = func():
 			GameState.add_free_boosters(0, 2)
 			_show_toast(Loc.t("added_carrot_title"), Loc.t("added_carrot_msg"))
-		)
+		_show_ad_modal(Loc.t("free_carrot_title"), Loc.t("free_carrot_sub"), on_carrot_ad, "free_carrot")
 		return
 	var res := _board_view.apply_carrot_booster()
 	if not res.is_empty():
 		GameState.use_carrot()
 		_show_toast(str(res.get("title", Loc.t("tool_carrot"))), str(res.get("message", "")))
+		Telemetry.track("booster_used", {
+			"booster": "carrot",
+			"carrots_left": GameState.carrots_count,
+			"level": _active_level_idx + 1,
+		})
 
 func _on_board_solved() -> void:
 	_is_playing = false
@@ -1662,15 +1755,26 @@ func _on_board_solved() -> void:
 		_show_ad_modal(
 			Loc.t("ad_break_title"),
 			Loc.t("ad_break_sub"),
-			func(): _show_win_modal(reward)
+			func(): _show_win_modal(reward),
+			"level_break"
 		)
 	else:
 		_show_win_modal(reward)
 
-func _clear_modal() -> Dictionary:
+func _dismiss_modal() -> void:
+	if _modal_layer != null:
+		_modal_layer.visible = false
+		for c in _modal_layer.get_children():
+			_modal_layer.remove_child(c)
+			c.queue_free()
 	_ad_is_active = false
-	for c in _modal_layer.get_children():
-		c.queue_free()
+	_ad_close_btn = null
+	_ad_close_lbl = null
+	_ad_progress_bar = null
+	_ad_on_complete = Callable()
+
+func _clear_modal() -> Dictionary:
+	_dismiss_modal()
 	_modal_layer.visible = true
 
 	var dim := ColorRect.new()
@@ -1703,13 +1807,45 @@ func _clear_modal() -> Dictionary:
 
 	return {"card": card, "vbox": vbox}
 
-func _show_ad_modal(ad_title: String, ad_subtitle: String, on_complete: Callable) -> void:
+func _show_ad_modal(ad_title: String, ad_subtitle: String, on_complete: Callable, placement: String = "unknown") -> void:
+	_pending_ad_placement = placement
+	_pending_ad_on_complete = on_complete
+	_pending_ad_reward_earned = false
+	Telemetry.track("ad_offered", {"placement": placement, "format": _ad_format_for_placement(placement), "level": _active_level_idx + 1})
+
+	var real_shown := false
+	if Ads.is_supported():
+		if placement == "level_break":
+			real_shown = Ads.show_interstitial(placement)
+		elif placement == "free_hint" or placement == "free_carrot" or placement == "revive":
+			real_shown = Ads.show_rewarded(placement)
+	if real_shown:
+		_ad_is_active = true # keep the level timer paused while the full-screen ad plays
+		Telemetry.track("ad_shown", {
+			"placement": placement,
+			"format": _ad_format_for_placement(placement),
+			"simulated": 0,
+			"level": _active_level_idx + 1,
+		})
+		Telemetry.set_screen("ad")
+		return
+
+	_show_simulated_ad_modal(ad_title, ad_subtitle, placement)
+
+func _ad_format_for_placement(placement: String) -> String:
+	if placement == "free_hint" or placement == "free_carrot" or placement == "revive":
+		return "rewarded"
+	return "interstitial"
+
+func _show_simulated_ad_modal(ad_title: String, ad_subtitle: String, placement: String) -> void:
 	var modal := _clear_modal()
 	var vbox: VBoxContainer = modal["vbox"]
-	_ad_on_complete = on_complete
+	_ad_on_complete = _pending_ad_on_complete
 	_ad_countdown_total = 3.0
 	_ad_countdown_sec = 3.0
 	_ad_is_active = true
+	Telemetry.track("ad_shown", {"placement": placement, "format": "interstitial", "simulated": 1, "level": _active_level_idx + 1})
+	Telemetry.set_screen("ad")
 
 	var hdr := _make_label(ad_title, 24, PALETTE.text_main, true, 2, PALETTE.cream_face, 2)
 	hdr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -1761,6 +1897,7 @@ func _show_ad_modal(ad_title: String, ad_subtitle: String, on_complete: Callable
 	vbox.add_child(_ad_progress_bar)
 
 	_ad_close_btn = Button.new()
+	_ad_close_btn.set_meta("telemetry_id", "ad_close")
 	_ad_close_btn.custom_minimum_size = Vector2(0, 52)
 	_ad_close_btn.disabled = true
 	_style_tactile_button(_ad_close_btn, Color("#DCD5C8"), Color("#A99F90"), Color("#BEB4A4"), Color("#8E8579"), 18, 4, 12, 8)
@@ -1776,6 +1913,7 @@ func _show_ad_modal(ad_title: String, ad_subtitle: String, on_complete: Callable
 
 	_ad_close_btn.pressed.connect(func():
 		SoundManager.play("click")
+		Telemetry.track("ad_closed", {"placement": placement, "watched_sec": int(_ad_countdown_total)})
 		_ad_is_active = false
 		_modal_layer.visible = false
 		if _ad_on_complete.is_valid():
@@ -1783,7 +1921,45 @@ func _show_ad_modal(ad_title: String, ad_subtitle: String, on_complete: Callable
 	)
 	vbox.add_child(_ad_close_btn)
 
+func _on_ads_ad_closed_signal(_format: String, placement: String, duration: int) -> void:
+	_on_ads_ad_closed(placement, duration)
+
+func _on_ads_ad_closed(placement: String, duration: int) -> void:
+	_ad_is_active = false
+	var format := _ad_format_for_placement(placement)
+	Telemetry.track("ad_closed", {
+		"placement": placement,
+		"format": format,
+		"watched_sec": duration,
+		"simulated": 0,
+		"level": _active_level_idx + 1,
+	})
+	var is_pending := placement == _pending_ad_placement
+	# Rewarded placements only complete when the SDK granted the reward.
+	var earned := format != "rewarded" or _pending_ad_reward_earned
+	if is_pending and earned and _pending_ad_on_complete.is_valid():
+		var on_complete := _pending_ad_on_complete
+		_pending_ad_placement = ""
+		_pending_ad_on_complete = Callable()
+		_pending_ad_reward_earned = false
+		on_complete.call()
+	elif is_pending:
+		_pending_ad_placement = ""
+		_pending_ad_on_complete = Callable()
+		_pending_ad_reward_earned = false
+	Telemetry.set_screen("game" if _game_screen != null and _game_screen.visible else "home")
+
+func _on_ads_ad_rewarded(placement: String, _amount: int, _reward_type: String) -> void:
+	if placement == _pending_ad_placement:
+		_pending_ad_reward_earned = true
+
+func _on_ads_consent_finished(_can_request_ads: bool) -> void:
+	# The privacy entry point is evaluated each time the language modal is built,
+	# so nothing has to be rebuilt when consent resolves.
+	pass
+
 func _show_win_modal(reward: Dictionary) -> void:
+	Telemetry.set_screen("result")
 	var modal := _clear_modal()
 	var vbox: VBoxContainer = modal["vbox"]
 
@@ -1844,6 +2020,7 @@ func _show_win_modal(reward: Dictionary) -> void:
 	vbox.add_child(btn_row)
 
 	var home_btn := Button.new()
+	home_btn.set_meta("telemetry_id", "win_home")
 	home_btn.text = Loc.t("home_menu")
 	home_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	home_btn.custom_minimum_size = Vector2(0, 54)
@@ -1854,18 +2031,27 @@ func _show_win_modal(reward: Dictionary) -> void:
 	)
 	btn_row.add_child(home_btn)
 
-	var next_btn := Button.new()
-	next_btn.text = Loc.t("next_level")
-	next_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	next_btn.custom_minimum_size = Vector2(0, 54)
-	_style_tactile_button(next_btn, PALETTE.carrot_face, PALETTE.carrot_border, PALETTE.carrot_lip, PALETTE.text_light, 18, 6, 12, 8)
-	next_btn.pressed.connect(func():
-		SoundManager.play("click")
-		start_level((_active_level_idx + 1) % GameState.get_level_count())
-	)
-	btn_row.add_child(next_btn)
+	if _active_level_idx + 1 < GameState.get_level_count():
+		var next_btn := Button.new()
+		next_btn.set_meta("telemetry_id", "win_next")
+		next_btn.text = Loc.t("next_level")
+		next_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		next_btn.custom_minimum_size = Vector2(0, 54)
+		_style_tactile_button(next_btn, PALETTE.carrot_face, PALETTE.carrot_border, PALETTE.carrot_lip, PALETTE.text_light, 18, 6, 12, 8)
+		next_btn.pressed.connect(func():
+			SoundManager.play("click")
+			start_level(_active_level_idx + 1, "next")
+		)
+		btn_row.add_child(next_btn)
 
 func _show_out_of_lives_modal() -> void:
+	Telemetry.set_screen("out_of_lives")
+	Telemetry.track("level_fail", {
+		"level": _active_level_idx + 1,
+		"reason": "out_of_lives",
+		"seconds": _elapsed_sec,
+		"mistakes": _mistakes,
+	})
 	var modal := _clear_modal()
 	var vbox: VBoxContainer = modal["vbox"]
 
@@ -1889,33 +2075,37 @@ func _show_out_of_lives_modal() -> void:
 	vbox.add_child(desc)
 
 	var revive_btn := Button.new()
+	revive_btn.set_meta("telemetry_id", "revive")
 	revive_btn.text = Loc.t("revive_btn")
 	revive_btn.custom_minimum_size = Vector2(0, 54)
 	_style_tactile_button(revive_btn, PALETTE.carrot_face, PALETTE.carrot_border, PALETTE.carrot_lip, PALETTE.text_light, 18, 6, 12, 8)
 	revive_btn.pressed.connect(func():
 		SoundManager.play("click")
-		_show_ad_modal(Loc.t("revive_ad_title"), Loc.t("revive_ad_sub"), func():
-			SoundManager.play("carrot")
-			_lives = 3
-			_update_lives_label()
-			_is_playing = true
-			_modal_layer.visible = false
-			_board_view.request_and_apply_hint()
-		)
+		_show_ad_modal(Loc.t("revive_ad_title"), Loc.t("revive_ad_sub"), _on_revive_ad_completed, "revive")
 	)
 	vbox.add_child(revive_btn)
 
 	var restart_btn := Button.new()
+	restart_btn.set_meta("telemetry_id", "restart")
 	restart_btn.text = Loc.t("restart_btn")
 	restart_btn.custom_minimum_size = Vector2(0, 48)
 	_style_tactile_button(restart_btn, PALETTE.cream_face, PALETTE.card_border, PALETTE.cream_lip, PALETTE.text_main, 18, 5, 12, 8)
 	restart_btn.pressed.connect(func():
 		SoundManager.play("click")
-		start_level(_active_level_idx)
+		start_level(_active_level_idx, "retry")
 	)
 	vbox.add_child(restart_btn)
 
+func _on_revive_ad_completed() -> void:
+	SoundManager.play("carrot")
+	_lives = 3
+	_update_lives_label()
+	_is_playing = true
+	_modal_layer.visible = false
+	_board_view.request_and_apply_hint()
+
 func _show_league_modal() -> void:
+	Telemetry.set_screen("league")
 	var modal := _clear_modal()
 	var vbox: VBoxContainer = modal["vbox"]
 
@@ -1974,6 +2164,7 @@ func _show_league_modal() -> void:
 		rh.add_child(tr_lbl)
 
 	var close_btn := Button.new()
+	close_btn.set_meta("telemetry_id", "league_close")
 	close_btn.text = Loc.t("close_btn")
 	close_btn.custom_minimum_size = Vector2(0, 50)
 	_style_tactile_button(close_btn, PALETTE.carrot_face, PALETTE.carrot_border, PALETTE.carrot_lip, PALETTE.text_light, 18, 6, 12, 8)
@@ -1984,6 +2175,7 @@ func _show_league_modal() -> void:
 	vbox.add_child(close_btn)
 
 func _show_language_modal() -> void:
+	Telemetry.set_screen("language")
 	var modal := _clear_modal()
 	var vbox: VBoxContainer = modal["vbox"]
 
@@ -2044,7 +2236,20 @@ func _show_language_modal() -> void:
 		)
 		grid.add_child(lbtn)
 
+	var privacy_btn := Button.new()
+	privacy_btn.set_meta("telemetry_id", "privacy_options")
+	privacy_btn.text = "🔒 Privacy options"
+	privacy_btn.custom_minimum_size = Vector2(0, 48)
+	privacy_btn.visible = Ads.privacy_options_required()
+	_style_tactile_button(privacy_btn, PALETTE.cream_face, PALETTE.card_border, PALETTE.cream_lip, PALETTE.text_main, 18, 4, 12, 8)
+	privacy_btn.pressed.connect(func():
+		SoundManager.play("click")
+		Ads.show_privacy_options()
+	)
+	vbox.add_child(privacy_btn)
+
 	var close_btn := Button.new()
+	close_btn.set_meta("telemetry_id", "language_close")
 	close_btn.text = Loc.t("close_btn")
 	close_btn.custom_minimum_size = Vector2(0, 48)
 	_style_tactile_button(close_btn, PALETTE.carrot_face, PALETTE.carrot_border, PALETTE.carrot_lip, PALETTE.text_light, 18, 6, 12, 8)

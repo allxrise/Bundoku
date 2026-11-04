@@ -92,12 +92,15 @@ func _init_default_language() -> void:
 func set_language(lang_code: String) -> void:
 	if not Loc.DATA.has(lang_code):
 		return
+	var prev_lang: String = language
 	language = lang_code
 	Loc.current_lang = lang_code
 	player_nickname = Loc.t("player_default_name")
 	save_game()
 	settings_changed.emit()
 	stats_changed.emit()
+	Telemetry.track("language_changed", {"from": prev_lang, "to": lang_code})
+	Telemetry.set_user_property("language", lang_code)
 
 func _load_levels() -> void:
 	levels.clear()
@@ -140,7 +143,10 @@ func complete_level(idx: int, elapsed_sec: int, mistakes: int) -> Dictionary:
 		"time_sec": mini(elapsed_sec, prev_time)
 	}
 
-	if idx >= unlocked_level_index and idx + 1 < levels.size():
+	# Only the next locked level may advance progress; replaying an old (or a
+	# daily-picked) level must not unlock everything up to it.
+	var prev_unlocked: int = unlocked_level_index
+	if idx == unlocked_level_index and idx + 1 < levels.size():
 		unlocked_level_index = idx + 1
 
 	var trophy_gain := 10 + stars * 5
@@ -174,6 +180,28 @@ func complete_level(idx: int, elapsed_sec: int, mistakes: int) -> Dictionary:
 			show_interstitial_ad = true
 			levels_since_last_ad = 0
 			total_ads_watched += 1
+
+	Telemetry.set_user_property("max_level", unlocked_level_index + 1)
+	Telemetry.set_user_property("trophies", player_trophies)
+	Telemetry.set_user_property("hints", hints_count)
+	Telemetry.set_user_property("carrots", carrots_count)
+	Telemetry.set_user_property("no_ads", int(no_ads_purchased))
+	Telemetry.track("level_complete", {
+		"level": idx + 1,
+		"size": int(lv.get("size", 5)),
+		"tier": tier_str,
+		"seconds": elapsed_sec,
+		"mistakes": mistakes,
+		"stars": stars,
+		"trophies": trophy_gain,
+		"bonus_hint": bonus_hint,
+		"bonus_carrot": bonus_carrot,
+		"hints_left": hints_count,
+		"carrots_left": carrots_count,
+		"ad_pending": int(show_interstitial_ad),
+	})
+	if unlocked_level_index != prev_unlocked:
+		Telemetry.track("level_unlocked", {"level": unlocked_level_index + 1})
 
 	save_game()
 	stats_changed.emit()
@@ -243,6 +271,7 @@ func save_game() -> void:
 	cfg.set_value("settings", "pattern_mode_enabled", pattern_mode_enabled)
 	cfg.set_value("settings", "bunny_first_tap_mode", bunny_first_tap_mode)
 	cfg.set_value("settings", "sound_enabled", SoundManager.sound_enabled)
+	cfg.set_value("settings", "music_enabled", SoundManager.music_enabled)
 	cfg.set_value("settings", "language", language)
 	cfg.save(SAVE_PATH)
 
@@ -265,6 +294,9 @@ func load_save() -> void:
 	pattern_mode_enabled = bool(cfg.get_value("settings", "pattern_mode_enabled", false))
 	bunny_first_tap_mode = bool(cfg.get_value("settings", "bunny_first_tap_mode", false))
 	SoundManager.sound_enabled = bool(cfg.get_value("settings", "sound_enabled", true))
+	# Older saves only stored sound_enabled; mirror it so muted players stay muted.
+	var music_on: bool = bool(cfg.get_value("settings", "music_enabled", SoundManager.sound_enabled))
+	SoundManager.set_music_enabled(music_on)
 	var saved_lang := str(cfg.get_value("settings", "language", ""))
 	if saved_lang != "" and Loc.DATA.has(saved_lang):
 		language = saved_lang

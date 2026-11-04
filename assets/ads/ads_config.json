@@ -1,0 +1,10 @@
+{
+  "_comment": "Bundoku AdMob config. The unit IDs below are Google's public TEST units; replace android_interstitial_unit, android_rewarded_unit and android_banner_unit with real AdMob ad unit IDs for release (and set test_mode to false). Android adaptive banner test unit: ca-app-pub-3940256099942544/9214589741. The App ID lives in project.godot under admob/general/android/app_id, not here. Meta bidding requires an AdMob mediation group with a Meta placement plus app-ads.txt at the domain root; see docs/ads/INTEGRATION.md.",
+  "test_mode": true,
+  "debug_eea": false,
+  "android_interstitial_unit": "ca-app-pub-3940256099942544/1033173712",
+  "android_rewarded_unit": "ca-app-pub-3940256099942544/5224354917",
+  "android_banner_unit": "ca-app-pub-3940256099942544/9214589741",
+  "enable_banner": true,
+  "preload": true
+}
